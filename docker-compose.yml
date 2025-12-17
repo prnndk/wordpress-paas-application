@@ -1,0 +1,114 @@
+# Main Docker Stack Definition
+# Combines all services for the WordPress PaaS
+
+version: "3.8"
+
+services:
+  # ============================================
+  # Dashboard Application (Next.js)
+  # ============================================
+  dashboard:
+    image: wordpress-paas/dashboard:latest
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.${DOMAIN:-localhost}
+      - ORCHESTRATOR_URL=http://orchestrator:3001
+    networks:
+      - wp_paas_network
+      - wp_paas_proxy_network
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dashboard.rule=Host(`${DOMAIN:-localhost}`)"
+        - "traefik.http.routers.dashboard.entrypoints=websecure"
+        - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+        - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================
+  # Orchestrator API (NestJS)
+  # ============================================
+  orchestrator:
+    image: wordpress-paas/orchestrator:latest
+    build:
+      context: ./packages/orchestrator
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MYSQL_HOST=mysql-master
+      - MYSQL_PORT=3306
+      - MYSQL_USER=wp_paas_admin
+      - MYSQL_PASSWORD=${MYSQL_APP_PASSWORD:-apppassword}
+      - MYSQL_DATABASE=wp_paas
+      - GLUSTER_MOUNT_PATH=/mnt/glusterfs/tenants
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/glusterfs/tenants:/mnt/glusterfs/tenants:shared
+    networks:
+      - wp_paas_network
+      - wp_paas_db_network
+      - wp_paas_proxy_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.orchestrator.rule=Host(`api.${DOMAIN:-localhost}`)"
+        - "traefik.http.routers.orchestrator.entrypoints=websecure"
+        - "traefik.http.routers.orchestrator.tls.certresolver=letsencrypt"
+        - "traefik.http.services.orchestrator.loadbalancer.server.port=3001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  wp_paas_network:
+    external: true
+  wp_paas_db_network:
+    external: true
+  wp_paas_proxy_network:
+    external: true

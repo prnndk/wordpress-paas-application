@@ -1,0 +1,57 @@
+# Traefik Dashboard Configuration
+# Access the dashboard at https://traefik.yourdomain.com
+
+http:
+  routers:
+    traefik-dashboard:
+      rule: "Host(`traefik.${DOMAIN:-localhost}`)"
+      service: api@internal
+      entryPoints:
+        - websecure
+      middlewares:
+        - auth-basic
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    auth-basic:
+      basicAuth:
+        users:
+          # Default: admin:admin (generate with htpasswd -nb admin password)
+          - "${TRAEFIK_DASHBOARD_AUTH:-admin:$apr1$rELwIMDe$cJZBmH9oAqDl22VGglaDp.}"
+    
+    # Security headers middleware
+    security-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: "SAMEORIGIN"
+    
+    # Rate limiting middleware
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1s
+    
+    # CORS middleware for API
+    cors:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - "*"
+        accessControlAllowOriginList:
+          - "*"
+        accessControlMaxAge: 100
+        addVaryHeader: true

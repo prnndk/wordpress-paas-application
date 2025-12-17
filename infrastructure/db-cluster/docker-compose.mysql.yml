@@ -1,0 +1,85 @@
+version: "3.8"
+
+services:
+  mysql-master:
+    image: mysql:8.0
+    hostname: mysql-master
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: wp_paas
+    volumes:
+      - mysql_master_data:/var/lib/mysql
+      - ./master/my.cnf:/etc/mysql/conf.d/master.cnf:ro
+      - ./init-master.sql:/docker-entrypoint-initdb.d/init-master.sql:ro
+    networks:
+      - wp_paas_db_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mysql-slave:
+    image: mysql:8.0
+    hostname: mysql-slave
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+    volumes:
+      - mysql_slave_data:/var/lib/mysql
+      - ./slave/my.cnf:/etc/mysql/conf.d/slave.cnf:ro
+      - ./init-slave.sql:/docker-entrypoint-initdb.d/init-slave.sql:ro
+    networks:
+      - wp_paas_db_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - mysql-master
+
+volumes:
+  mysql_master_data:
+    driver: local
+  mysql_slave_data:
+    driver: local
+
+networks:
+  wp_paas_db_network:
+    external: true
