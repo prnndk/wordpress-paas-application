@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DockerService, ServiceSpec } from '../docker/docker.service';
 import { DatabaseService, TenantDatabase } from './database.service';
-import { StorageService } from './storage.service';
 
 export interface WordPressInstance {
     tenantId: string;
@@ -23,7 +22,6 @@ export class WordPressService {
         private configService: ConfigService,
         private dockerService: DockerService,
         private databaseService: DatabaseService,
-        private storageService: StorageService
     ) {
         this.domain = this.configService.get<string>('DOMAIN', 'localhost');
         this.wpImage = this.configService.get<string>(
@@ -57,7 +55,7 @@ export class WordPressService {
                 `WORDPRESS_DB_PASSWORD=${database.password}`,
                 `WORDPRESS_DB_NAME=${database.name}`,
                 `WORDPRESS_TABLE_PREFIX=wp_`,
-                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'https://${subdomain}.${this.domain}'); define('WP_SITEURL', 'https://${subdomain}.${this.domain}'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${subdomain}.${this.domain}'); define('WP_SITEURL', 'http://${subdomain}.${this.domain}'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
                 // S3/MinIO configuration for WP Offload Media plugin
                 `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
                 `S3_UPLOADS_BUCKET=${minioBucket}`,
@@ -73,8 +71,7 @@ export class WordPressService {
                 // Traefik labels for automatic routing
                 'traefik.enable': 'true',
                 [`traefik.http.routers.${serviceName}.rule`]: `Host(\`${subdomain}.${this.domain}\`)`,
-                [`traefik.http.routers.${serviceName}.entrypoints`]: 'websecure',
-                [`traefik.http.routers.${serviceName}.tls.certresolver`]: 'letsencrypt',
+                [`traefik.http.routers.${serviceName}.entrypoints`]: 'web',
                 [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: '80',
             },
             mounts: [

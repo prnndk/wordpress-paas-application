@@ -1,0 +1,51 @@
+version: "3.8"
+
+# Traefik Reverse Proxy for WordPress PaaS (Development - No HTTPS)
+# Automatically routes traffic based on subdomain labels
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      # Docker Swarm mode
+      - "--providers.docker=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=wp_paas_proxy_network"
+      # Entrypoints (HTTP only for development)
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      # Logging
+      - "--log.level=DEBUG"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8082:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - wp_paas_proxy_network
+      - wp_paas_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+networks:
+  wp_paas_proxy_network:
+    external: true
+  wp_paas_network:
+    external: true
