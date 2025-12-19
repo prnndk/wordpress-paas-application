@@ -5,11 +5,14 @@ version: "3.8"
 
 services:
   glusterfs-server:
-    image: gluster/gluster-centos:latest
+    image: gluster/gluster-fedora:latest
     hostname: "gluster-{{.Node.Hostname}}"
     privileged: true
+    cap_add:
+      - SYS_ADMIN
     environment:
       - TZ=UTC
+      - container=docker
     volumes:
       - gluster_data:/glusterfs
       - gluster_etc:/etc/glusterfs
@@ -35,11 +38,11 @@ services:
         delay: 5s
         max_attempts: 3
     healthcheck:
-      test: ["CMD", "gluster", "peer", "status"]
+      test: ["CMD", "glusterd", "--version"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 120s
 
 volumes:
   gluster_data:
