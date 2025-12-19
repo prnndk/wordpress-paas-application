@@ -105,11 +105,11 @@ export class DockerService implements OnModuleInit {
                     Delay: 5000000000, // 5 seconds in nanoseconds
                     MaxAttempts: 3,
                 },
+                Networks: spec.networks.map((networkName) => ({ Target: networkName })), // Networks must be in TaskTemplate for Swarm
             },
             Mode: {
                 Replicated: { Replicas: spec.replicas },
             },
-            Networks: spec.networks.map((networkName) => ({ Target: networkName })),
             Labels: spec.labels, // Keep labels on service level too for filtering
             EndpointSpec: {
                 Mode: 'vip',
