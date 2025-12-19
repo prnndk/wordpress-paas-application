@@ -1,0 +1,80 @@
+version: "3.8"
+
+# MinIO Object Storage for WordPress PaaS
+# S3-compatible storage for WordPress media uploads
+# Accessible from all nodes via API
+
+services:
+  minio:
+    image: minio/minio:latest
+    hostname: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # API port
+      - "9002:9001"   # Console port (changed to 9002 to avoid conflict)
+    networks:
+      - wp_paas_storage_network
+      - wp_paas_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+
+  # MinIO Client for bucket initialization
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb myminio/wp-uploads --ignore-existing;
+      mc anonymous set download myminio/wp-uploads;
+      echo 'MinIO bucket initialized successfully';
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    networks:
+      - wp_paas_storage_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: none
+
+volumes:
+  minio_data:
+    driver: local
+
+networks:
+  wp_paas_storage_network:
+    external: true
+  wp_paas_network:
+    external: true

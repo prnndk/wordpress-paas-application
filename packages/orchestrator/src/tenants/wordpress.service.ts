@@ -38,7 +38,14 @@ export class WordPressService {
         database: TenantDatabase
     ): Promise<string> {
         const serviceName = `wp_${tenantId}`;
-        const wpContentPath = await this.storageService.getTenantStoragePath(tenantId);
+        // Use Docker named volume for wp-content (themes, plugins)
+        const volumeName = `wp_content_${tenantId}`;
+
+        // MinIO/S3 configuration for media uploads
+        const minioEndpoint = this.configService.get<string>('MINIO_ENDPOINT', 'http://minio:9000');
+        const minioAccessKey = this.configService.get<string>('MINIO_ROOT_USER', 'minioadmin');
+        const minioSecretKey = this.configService.get<string>('MINIO_ROOT_PASSWORD', 'minioadmin123');
+        const minioBucket = `wp-uploads`;
 
         const spec: ServiceSpec = {
             name: serviceName,
@@ -50,7 +57,14 @@ export class WordPressService {
                 `WORDPRESS_DB_PASSWORD=${database.password}`,
                 `WORDPRESS_DB_NAME=${database.name}`,
                 `WORDPRESS_TABLE_PREFIX=wp_`,
-                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'https://${subdomain}.${this.domain}'); define('WP_SITEURL', 'https://${subdomain}.${this.domain}');`,
+                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'https://${subdomain}.${this.domain}'); define('WP_SITEURL', 'https://${subdomain}.${this.domain}'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+                // S3/MinIO configuration for WP Offload Media plugin
+                `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
+                `S3_UPLOADS_BUCKET=${minioBucket}`,
+                `S3_UPLOADS_KEY=${minioAccessKey}`,
+                `S3_UPLOADS_SECRET=${minioSecretKey}`,
+                `S3_UPLOADS_REGION=us-east-1`,
+                `S3_UPLOADS_USE_PATH_STYLE=true`,
             ],
             labels: {
                 'wp-paas.tenant': tenantId,
@@ -65,9 +79,9 @@ export class WordPressService {
             },
             mounts: [
                 {
-                    source: wpContentPath,
+                    source: volumeName,
                     target: '/var/www/html/wp-content',
-                    type: 'bind',
+                    type: 'volume', // Changed from 'bind' to 'volume'
                 },
             ],
             networks: ['wp_paas_network', 'wp_paas_db_network', 'wp_paas_proxy_network'],

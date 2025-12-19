@@ -54,7 +54,8 @@ export class StorageService {
     }
 
     async getTenantStoragePath(tenantId: string): Promise<string> {
-        return path.join(this.basePath, tenantId, 'wp-content');
+        // Always use forward slashes for Docker mount paths (Linux containers)
+        return `${this.basePath}/${tenantId}/wp-content`.replace(/\\/g, '/');
     }
 
     async listTenantFiles(
