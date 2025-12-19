@@ -11,6 +11,11 @@ services:
       - mysql_master_data:/var/lib/mysql
       - ./master/my.cnf:/etc/mysql/conf.d/master.cnf:ro
       - ./init-master.sql:/docker-entrypoint-initdb.d/init-master.sql:ro
+    ports:
+      - target: 3306
+        published: 3306
+        protocol: tcp
+        mode: host
     networks:
       - wp_paas_db_network
     deploy:

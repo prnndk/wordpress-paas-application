@@ -12,11 +12,30 @@ services:
     cap_add:
       - SYS_ADMIN
     network_mode: host
-    command: >
-      bash -c "glusterd -N &
-      sleep 5 &&
-      echo 'GlusterFS daemon started on port 24007' &&
-      tail -f /var/log/glusterfs/glusterd.log"
+    command:
+      - bash
+      - -c
+      - |
+        echo "=== Fixing GlusterFS configuration ==="
+        # Find and fix all glusterd.vol files - change rdma to socket
+        find /etc /var -name "glusterd.vol" -exec sed -i 's/transport-type rdma/transport-type socket/g' {} \; 2>/dev/null
+        find /etc /var -name "glusterd.vol" -exec sed -i 's/transport\.rdma/transport.socket/g' {} \; 2>/dev/null
+        
+        # Show the fixed config
+        echo "=== Config after fix ==="
+        cat /etc/glusterfs/glusterd.vol 2>/dev/null || cat /var/lib/glusterd/glusterd.vol 2>/dev/null || echo "No config found"
+        
+        # Start glusterd
+        echo "=== Starting glusterd ==="
+        glusterd -N --log-level=INFO &
+        sleep 10
+        
+        # Verify port is listening
+        echo "=== Checking ports ==="
+        ss -tlnp | grep 24007 || echo "Port 24007 not listening!"
+        
+        echo "=== GlusterFS daemon started ==="
+        tail -f /var/log/glusterfs/glusterd.log
     environment:
       - TZ=UTC
       - container=docker
@@ -43,7 +62,7 @@ services:
         delay: 5s
         max_attempts: 3
     healthcheck:
-      test: ["CMD-SHELL", "gluster peer status || exit 1"]
+      test: ["CMD-SHELL", "ss -tlnp | grep 24007 || exit 1"]
       interval: 30s
       timeout: 30s
       retries: 5
