@@ -2,6 +2,7 @@ version: "3.8"
 
 # GlusterFS Distributed Storage for WordPress PaaS
 # Provides replicated volumes across worker nodes
+# Uses host network mode for direct inter-node communication
 
 services:
   glusterfs-server:
@@ -10,6 +11,12 @@ services:
     privileged: true
     cap_add:
       - SYS_ADMIN
+    network_mode: host
+    command: >
+      bash -c "glusterd -N &
+      sleep 5 &&
+      echo 'GlusterFS daemon started on port 24007' &&
+      tail -f /var/log/glusterfs/glusterd.log"
     environment:
       - TZ=UTC
       - container=docker
@@ -19,29 +26,6 @@ services:
       - gluster_lib:/var/lib/glusterd
       - gluster_log:/var/log/glusterfs
       - /mnt/glusterfs:/mnt/glusterfs:shared
-    ports:
-      - target: 24007
-        published: 24007
-        protocol: tcp
-        mode: host
-      - target: 24008
-        published: 24008
-        protocol: tcp
-        mode: host
-      - target: 49152
-        published: 49152
-        protocol: tcp
-        mode: host
-      - target: 49153
-        published: 49153
-        protocol: tcp
-        mode: host
-      - target: 49154
-        published: 49154
-        protocol: tcp
-        mode: host
-    networks:
-      - wp_paas_storage_network
     deploy:
       mode: global
       placement:
@@ -59,11 +43,11 @@ services:
         delay: 5s
         max_attempts: 3
     healthcheck:
-      test: ["CMD", "glusterd", "--version"]
+      test: ["CMD-SHELL", "gluster peer status || exit 1"]
       interval: 30s
       timeout: 30s
       retries: 5
-      start_period: 120s
+      start_period: 60s
 
 volumes:
   gluster_data:
@@ -74,7 +58,3 @@ volumes:
     driver: local
   gluster_log:
     driver: local
-
-networks:
-  wp_paas_storage_network:
-    external: true
