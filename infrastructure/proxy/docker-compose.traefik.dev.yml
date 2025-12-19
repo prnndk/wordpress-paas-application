@@ -5,9 +5,7 @@ version: "3.8"
 
 services:
   traefik:
-    image: traefik:v3.2
-    environment:
-      - DOCKER_API_VERSION=1.44
+    image: traefik:latest
     command:
       # Docker Swarm mode
       - "--providers.swarm=true"
