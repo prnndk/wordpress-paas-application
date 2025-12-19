@@ -19,6 +19,27 @@ services:
       - gluster_lib:/var/lib/glusterd
       - gluster_log:/var/log/glusterfs
       - /mnt/glusterfs:/mnt/glusterfs:shared
+    ports:
+      - target: 24007
+        published: 24007
+        protocol: tcp
+        mode: host
+      - target: 24008
+        published: 24008
+        protocol: tcp
+        mode: host
+      - target: 49152
+        published: 49152
+        protocol: tcp
+        mode: host
+      - target: 49153
+        published: 49153
+        protocol: tcp
+        mode: host
+      - target: 49154
+        published: 49154
+        protocol: tcp
+        mode: host
     networks:
       - wp_paas_storage_network
     deploy:
