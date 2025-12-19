@@ -86,6 +86,7 @@ export class DockerService implements OnModuleInit {
                 ContainerSpec: {
                     Image: spec.image,
                     Env: spec.env,
+                    Labels: spec.labels, // Traefik reads labels from ContainerSpec in Swarm mode
                     Mounts: spec.mounts.map((mount) => ({
                         Source: mount.source,
                         Target: mount.target,
@@ -109,7 +110,7 @@ export class DockerService implements OnModuleInit {
                 Replicated: { Replicas: spec.replicas },
             },
             Networks: spec.networks.map((networkName) => ({ Target: networkName })),
-            Labels: spec.labels,
+            Labels: spec.labels, // Keep labels on service level too for filtering
             EndpointSpec: {
                 Mode: 'vip',
             },

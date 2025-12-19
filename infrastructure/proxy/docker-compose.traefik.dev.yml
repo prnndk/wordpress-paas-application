@@ -5,13 +5,15 @@ version: "3.8"
 
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:v3.2
+    environment:
+      - DOCKER_API_VERSION=1.44
     command:
       # Docker Swarm mode
-      - "--providers.docker=true"
-      - "--providers.docker.swarmMode=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=wp_paas_proxy_network"
+      - "--providers.swarm=true"
+      - "--providers.swarm.exposedbydefault=false"
+      - "--providers.swarm.network=wp_paas_proxy_network"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
       # Entrypoints (HTTP only for development)
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
