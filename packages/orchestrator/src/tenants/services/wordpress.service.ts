@@ -1,30 +1,33 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { DockerService, ServiceSpec } from '../../docker/docker.service';
-import { TenantRepository } from '../repositories/tenant.repository';
-import { TenantDatabase } from './tenant-database.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { DockerService, ServiceSpec } from "../../docker/docker.service";
+import { TenantRepository } from "../repositories/tenant.repository";
+import { TenantDatabase } from "./tenant-database.service";
 
 export interface WordPressInstance {
-    tenantId: string;
-    subdomain: string;
-    serviceId?: string;
-    status: 'creating' | 'running' | 'stopped' | 'error';
-    replicas: number;
-    runningReplicas: number;
+	tenantId: string;
+	subdomain: string;
+	serviceId?: string;
+	status: "creating" | "running" | "stopped" | "error";
+	replicas: number;
+	runningReplicas: number;
 }
 
 export interface WordPressDeployOptions {
-    wpAdminUser: string;
-    wpAdminPassword: string;
-    replicas: number;
+	wpAdminUser: string;
+	wpAdminPassword: string;
+	wpAdminEmail?: string;
+	siteTitle?: string;
+	replicas: number;
+	customEnv?: { key: string; value: string }[];
 }
 
 @Injectable()
 export class WordPressService {
-    private readonly logger = new Logger(WordPressService.name);
-    private readonly domain: string;
-    private readonly serverIp: string;
-    private readonly wpImage: string;
+	private readonly logger = new Logger(WordPressService.name);
+	private readonly domain: string;
+	private readonly serverIp: string;
+	// private readonly wpImage: string; // Removed static image property
 
     constructor(
         private configService: ConfigService,
@@ -40,26 +43,35 @@ export class WordPressService {
         );
     }
 
-    async deployWordPress(
-        tenantId: string,
-        subdomain: string,
-        database: TenantDatabase,
-        options?: WordPressDeployOptions
-    ): Promise<string> {
-        const serviceName = `wp_${tenantId}`;
-        // Use Docker named volume for wp-content (themes, plugins)
-        const volumeName = `wp_content_${tenantId}`;
+	async deployWordPress(
+		tenantId: string,
+		subdomain: string,
+		database: TenantDatabase,
+		options?: WordPressDeployOptions
+	): Promise<string> {
+		const serviceName = `wp_${tenantId}`;
+		// Use Docker named volume for wp-content (themes, plugins)
+		const volumeName = `wp_content_${tenantId}`;
 
-        // WordPress admin credentials
-        const wpAdminUser = options?.wpAdminUser || 'admin';
-        const wpAdminPassword = options?.wpAdminPassword || 'changeme123';
-        const replicas = options?.replicas || 2;
+		// WordPress admin credentials
+		const wpAdminUser = options?.wpAdminUser || "admin";
+		const wpAdminPassword = options?.wpAdminPassword || "changeme123";
+		const replicas = options?.replicas || 2;
 
-        // MinIO/S3 configuration for media uploads
-        const minioEndpoint = this.configService.get<string>('MINIO_ENDPOINT', 'http://minio:9000');
-        const minioAccessKey = this.configService.get<string>('MINIO_ROOT_USER', 'minioadmin');
-        const minioSecretKey = this.configService.get<string>('MINIO_ROOT_PASSWORD', 'minioadmin123');
-        const minioBucket = `wp-uploads`;
+		// MinIO/S3 configuration for media uploads
+		const minioEndpoint = this.configService.get<string>(
+			"MINIO_ENDPOINT",
+			"http://minio:9000"
+		);
+		const minioAccessKey = this.configService.get<string>(
+			"MINIO_ROOT_USER",
+			"minioadmin"
+		);
+		const minioSecretKey = this.configService.get<string>(
+			"MINIO_ROOT_PASSWORD",
+			"minioadmin123"
+		);
+		const minioBucket = `wp-uploads`;
 
         const spec: ServiceSpec = {
             name: serviceName,
@@ -124,80 +136,105 @@ export class WordPressService {
             ],
         };
 
-        const serviceId = await this.dockerService.createService(spec);
-        this.logger.log(`WordPress deployed: ${serviceName} (${serviceId}) with ${replicas} replicas`);
+		const serviceId = await this.dockerService.createService(spec);
+		this.logger.log(
+			`WordPress deployed: ${serviceName} (${serviceId}) with ${replicas} replicas`
+		);
 
-        return serviceId;
-    }
+		return serviceId;
+	}
 
-    async getWordPressInstance(tenantId: string): Promise<WordPressInstance | null> {
-        const serviceName = `wp_${tenantId}`;
-        const serviceInfo = await this.dockerService.getService(serviceName);
+	async getWordPressInstance(
+		tenantId: string
+	): Promise<WordPressInstance | null> {
+		const serviceName = `wp_${tenantId}`;
+		const serviceInfo = await this.dockerService.getService(serviceName);
 
-        if (!serviceInfo) {
-            return null;
-        }
+		// Detailed debug for instance status
+		if (serviceInfo && serviceInfo.runningReplicas === 0) {
+			this.logger.debug(
+				`Instance ${serviceName} found but no running replicas. Service info: ${JSON.stringify(
+					serviceInfo
+				)}`
+			);
+		}
 
-        const tenant = await this.tenantRepository.findById(tenantId);
+		if (!serviceInfo) {
+			return null;
+		}
 
-        return {
-            tenantId,
-            subdomain: tenant?.subdomain || '',
-            serviceId: serviceInfo.id,
-            status: serviceInfo.runningReplicas > 0 ? 'running' : 'stopped',
-            replicas: serviceInfo.replicas,
-            runningReplicas: serviceInfo.runningReplicas,
-        };
-    }
+		const tenant = await this.tenantRepository.findById(tenantId);
 
-    async stopWordPress(tenantId: string): Promise<void> {
-        const serviceName = `wp_${tenantId}`;
-        await this.dockerService.scaleService(serviceName, 0);
-        await this.tenantRepository.updateStatus(tenantId, 'stopped');
-        this.logger.log(`WordPress stopped: ${serviceName}`);
-    }
+		return {
+			tenantId,
+			subdomain: tenant?.slug || "",
+			serviceId: serviceInfo.id,
+			status: serviceInfo.runningReplicas > 0 ? "running" : "stopped",
+			replicas: serviceInfo.replicas,
+			runningReplicas: serviceInfo.runningReplicas,
+		};
+	}
 
-    async startWordPress(tenantId: string): Promise<void> {
-        const serviceName = `wp_${tenantId}`;
-        // Get tenant to find out the desired replicas from plan
-        const tenant = await this.tenantRepository.findById(tenantId);
-        const replicas = tenant?.replicas || 2;
-        await this.dockerService.scaleService(serviceName, replicas);
-        await this.tenantRepository.updateStatus(tenantId, 'running');
-        this.logger.log(`WordPress started: ${serviceName}`);
-    }
+	async stopWordPress(tenantId: string): Promise<void> {
+		const serviceName = `wp_${tenantId}`;
+		this.logger.log(`Attempting to stop WordPress service: ${serviceName}`);
+		await this.dockerService.scaleService(serviceName, 0);
+		await this.tenantRepository.updateStatus(tenantId, "stopped");
+		this.logger.log(`WordPress stopped successfully: ${serviceName}`);
+	}
 
-    async restartWordPress(tenantId: string): Promise<void> {
-        await this.stopWordPress(tenantId);
-        // Brief delay before restart
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        await this.startWordPress(tenantId);
-        this.logger.log(`WordPress restarted: wp_${tenantId}`);
-    }
+	async startWordPress(tenantId: string): Promise<void> {
+		const serviceName = `wp_${tenantId}`;
+		this.logger.log(`Attempting to start WordPress service: ${serviceName}`);
 
-    async deleteWordPress(tenantId: string): Promise<void> {
-        const serviceName = `wp_${tenantId}`;
-        await this.dockerService.removeService(serviceName);
-        this.logger.log(`WordPress deleted: ${serviceName}`);
-    }
+		// Get tenant to find out the desired replicas from plan
+		const tenant = await this.tenantRepository.findById(tenantId);
+		const replicas = tenant?.replicas || 2;
 
-    async getWordPressLogs(tenantId: string, tail: number = 100): Promise<string> {
-        const serviceName = `wp_${tenantId}`;
-        return this.dockerService.getServiceLogs(serviceName, { tail });
-    }
+		this.logger.debug(`Scaling service ${serviceName} to ${replicas} replicas`);
+		await this.dockerService.scaleService(serviceName, replicas);
 
-    async listAllWordPressInstances(): Promise<WordPressInstance[]> {
-        const services = await this.dockerService.listServices({
-            'wp-paas.type': 'wordpress',
-        });
+		await this.tenantRepository.updateStatus(tenantId, "running");
+		this.logger.log(
+			`WordPress service scaled: ${serviceName}. Monitoring stability...`
+		);
+	}
 
-        return services.map((svc) => ({
-            tenantId: svc.name.replace('wp_', ''),
-            subdomain: '',
-            serviceId: svc.id,
-            status: svc.runningReplicas > 0 ? 'running' : 'stopped',
-            replicas: svc.replicas,
-            runningReplicas: svc.runningReplicas,
-        }));
-    }
+	async restartWordPress(tenantId: string): Promise<void> {
+		this.logger.log(`Restarting WordPress service: wp_${tenantId}`);
+		await this.stopWordPress(tenantId);
+		// Brief delay before restart
+		await new Promise((resolve) => setTimeout(resolve, 3000));
+		await this.startWordPress(tenantId);
+		this.logger.log(`WordPress restarted successfully: wp_${tenantId}`);
+	}
+
+	async deleteWordPress(tenantId: string): Promise<void> {
+		const serviceName = `wp_${tenantId}`;
+		await this.dockerService.removeService(serviceName);
+		this.logger.log(`WordPress deleted: ${serviceName}`);
+	}
+
+	async getWordPressLogs(
+		tenantId: string,
+		tail: number = 100
+	): Promise<string> {
+		const serviceName = `wp_${tenantId}`;
+		return this.dockerService.getServiceLogs(serviceName, { tail });
+	}
+
+	async listAllWordPressInstances(): Promise<WordPressInstance[]> {
+		const services = await this.dockerService.listServices({
+			"wp-paas.type": "wordpress",
+		});
+
+		return services.map((svc) => ({
+			tenantId: svc.name.replace("wp_", ""),
+			subdomain: "",
+			serviceId: svc.id,
+			status: svc.runningReplicas > 0 ? "running" : "stopped",
+			replicas: svc.replicas,
+			runningReplicas: svc.runningReplicas,
+		}));
+	}
 }

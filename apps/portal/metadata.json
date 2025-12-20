@@ -1,0 +1,5 @@
+{
+  "name": "WPCube Cloud Console",
+  "description": "On-Premise WordPress-as-a-Service Management Dashboard. Manage containers, provision instances, and monitor resources.",
+  "requestFramePermissions": []
+}
