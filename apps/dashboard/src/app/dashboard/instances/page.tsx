@@ -2,9 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import {
     Server,
     Plus,
@@ -16,7 +24,8 @@ import {
     CheckCircle2,
     AlertCircle,
     Loader2,
-    MoreVertical
+    MoreVertical,
+    AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +45,8 @@ export default function InstancesPage() {
     const [instances, setInstances] = useState<Instance[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [instanceToDelete, setInstanceToDelete] = useState<Instance | null>(null);
 
     const fetchInstances = async () => {
         const token = localStorage.getItem('accessToken');
@@ -84,6 +95,11 @@ export default function InstancesPage() {
                 description: `Instance ${action}${action.endsWith('e') ? 'd' : 'ed'} successfully`,
             });
 
+            if (action === 'delete') {
+                setDeleteModalOpen(false);
+                setInstanceToDelete(null);
+            }
+
             fetchInstances();
         } catch (error) {
             toast({
@@ -96,8 +112,84 @@ export default function InstancesPage() {
         }
     };
 
+    const openDeleteModal = (instance: Instance) => {
+        setInstanceToDelete(instance);
+        setDeleteModalOpen(true);
+    };
+
+    const closeDeleteModal = () => {
+        if (actionLoading) return;
+        setDeleteModalOpen(false);
+        setInstanceToDelete(null);
+    };
+
     return (
         <div className="space-y-8">
+            {/* Delete Confirmation Modal */}
+            <Dialog open={deleteModalOpen} onOpenChange={closeDeleteModal}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <AlertTriangle className="w-5 h-5" />
+                            Delete Instance
+                        </DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this WordPress instance? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {instanceToDelete && (
+                        <div className="py-4">
+                            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-lg bg-destructive/20 flex items-center justify-center">
+                                        <Server className="w-5 h-5 text-destructive" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold">{instanceToDelete.name}</h4>
+                                        <p className="text-sm text-muted-foreground">
+                                            {instanceToDelete.subdomain}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-sm text-muted-foreground space-y-1">
+                                    <p>• All WordPress files and data will be permanently deleted</p>
+                                    <p>• The database associated with this instance will be removed</p>
+                                    <p>• This action is irreversible</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            onClick={closeDeleteModal}
+                            disabled={actionLoading === instanceToDelete?.id}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={() => instanceToDelete && handleAction(instanceToDelete.id, 'delete')}
+                            disabled={actionLoading === instanceToDelete?.id}
+                        >
+                            {actionLoading === instanceToDelete?.id ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete Instance
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -121,16 +213,18 @@ export default function InstancesPage() {
                 </div>
             ) : instances.length === 0 ? (
                 <Card className="glass gradient-border">
-                    <CardContent className="py-16 text-center">
-                        <Server className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-xl font-medium mb-2">No instances yet</h3>
-                        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                            Deploy your first WordPress instance. Each instance gets its own database, storage, and runs on multiple nodes for high availability.
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center mb-4">
+                            <Server className="w-8 h-8 text-indigo-400" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">No instances yet</h3>
+                        <p className="text-muted-foreground mb-6 text-center max-w-sm">
+                            Create your first WordPress instance to get started
                         </p>
                         <Link href="/dashboard/instances/new">
-                            <Button variant="glow" size="lg">
-                                <Plus className="w-5 h-5 mr-2" />
-                                Create Your First Instance
+                            <Button variant="glow">
+                                <Plus className="w-4 h-4 mr-2" />
+                                Create Instance
                             </Button>
                         </Link>
                     </CardContent>
@@ -138,19 +232,19 @@ export default function InstancesPage() {
             ) : (
                 <div className="grid gap-4">
                     {instances.map((instance) => (
-                        <Card key={instance.id} className="glass gradient-border">
-                            <CardContent className="p-6">
+                        <Card key={instance.id} className="glass gradient-border hover:border-primary/50 transition-colors">
+                            <CardContent className="py-4">
                                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                     {/* Instance Info */}
                                     <div className="flex items-center gap-4">
                                         <div className={cn(
-                                            'w-12 h-12 rounded-xl flex items-center justify-center',
+                                            "w-12 h-12 rounded-xl flex items-center justify-center",
                                             instance.status === 'running'
-                                                ? 'bg-green-500/20'
-                                                : 'bg-yellow-500/20'
+                                                ? "bg-gradient-to-br from-green-500/20 to-emerald-500/20"
+                                                : "bg-gradient-to-br from-yellow-500/20 to-orange-500/20"
                                         )}>
                                             <Server className={cn(
-                                                'w-6 h-6',
+                                                "w-6 h-6",
                                                 instance.status === 'running'
                                                     ? 'text-green-400'
                                                     : 'text-yellow-400'
@@ -159,7 +253,7 @@ export default function InstancesPage() {
                                         <div>
                                             <h3 className="text-lg font-semibold">{instance.name}</h3>
                                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                <span>{instance.subdomain}.{process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}</span>
+                                                <span>{process.env.NEXT_PUBLIC_SERVER_IP || process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}/{instance.subdomain}</span>
                                                 <span>•</span>
                                                 <span>{instance.runningReplicas}/{instance.replicas} replicas</span>
                                             </div>
@@ -169,12 +263,10 @@ export default function InstancesPage() {
                                     {/* Status Badge */}
                                     <div className="flex items-center gap-4 flex-wrap">
                                         <span className={cn(
-                                            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm',
+                                            "px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1",
                                             instance.status === 'running'
-                                                ? 'bg-green-500/20 text-green-400'
-                                                : instance.status === 'stopped'
-                                                    ? 'bg-gray-500/20 text-gray-400'
-                                                    : 'bg-yellow-500/20 text-yellow-400'
+                                                ? "bg-green-500/20 text-green-400"
+                                                : "bg-yellow-500/20 text-yellow-400"
                                         )}>
                                             {instance.status === 'running' ? (
                                                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -244,7 +336,7 @@ export default function InstancesPage() {
                                                 variant="outline"
                                                 size="sm"
                                                 className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                                                onClick={() => handleAction(instance.id, 'delete')}
+                                                onClick={() => openDeleteModal(instance)}
                                                 disabled={actionLoading === instance.id}
                                             >
                                                 <Trash2 className="w-4 h-4" />

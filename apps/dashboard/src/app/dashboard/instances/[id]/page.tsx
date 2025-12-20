@@ -7,6 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
     ArrowLeft,
     Server,
     Play,
@@ -21,7 +29,8 @@ import {
     Database,
     HardDrive,
     Clock,
-    Activity
+    Activity,
+    AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -45,6 +54,7 @@ export default function InstanceDetailPage() {
     const [instance, setInstance] = useState<Instance | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
     const instanceId = params.id as string;
 
@@ -156,6 +166,69 @@ export default function InstanceDetailPage() {
 
     return (
         <div className="space-y-8">
+            {/* Delete Confirmation Modal */}
+            <Dialog open={deleteModalOpen} onOpenChange={(open) => !actionLoading && setDeleteModalOpen(open)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <AlertTriangle className="w-5 h-5" />
+                            Delete Instance
+                        </DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this WordPress instance? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4">
+                        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="w-10 h-10 rounded-lg bg-destructive/20 flex items-center justify-center">
+                                    <Server className="w-5 h-5 text-destructive" />
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold">{instance.name}</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        {instance.subdomain}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="text-sm text-muted-foreground space-y-1">
+                                <p>• All WordPress files and data will be permanently deleted</p>
+                                <p>• The database associated with this instance will be removed</p>
+                                <p>• This action is irreversible</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteModalOpen(false)}
+                            disabled={actionLoading === 'delete'}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={() => handleAction('delete')}
+                            disabled={actionLoading === 'delete'}
+                        >
+                            {actionLoading === 'delete' ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete Instance
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -167,7 +240,7 @@ export default function InstanceDetailPage() {
                     <div>
                         <h1 className="text-3xl font-bold">{instance.name}</h1>
                         <p className="text-muted-foreground">
-                            {instance.subdomain}.{process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}
+                            {process.env.NEXT_PUBLIC_SERVER_IP || process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}/{instance.subdomain}
                         </p>
                     </div>
                 </div>
@@ -271,14 +344,10 @@ export default function InstanceDetailPage() {
 
                             <Button
                                 variant="destructive"
-                                onClick={() => handleAction('delete')}
+                                onClick={() => setDeleteModalOpen(true)}
                                 disabled={actionLoading !== null}
                             >
-                                {actionLoading === 'delete' ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                )}
+                                <Trash2 className="w-4 h-4 mr-2" />
                                 Delete
                             </Button>
                         </div>
@@ -295,7 +364,7 @@ export default function InstanceDetailPage() {
                             <span className="text-sm text-muted-foreground">Domain</span>
                         </div>
                         <p className="font-medium">
-                            {instance.subdomain}.{process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}
+                            {process.env.NEXT_PUBLIC_SERVER_IP || process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}/{instance.subdomain}
                         </p>
                     </CardContent>
                 </Card>

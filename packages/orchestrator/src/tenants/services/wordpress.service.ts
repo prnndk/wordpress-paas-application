@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DockerService, ServiceSpec } from '../docker/docker.service';
-import { DatabaseService, TenantDatabase } from './database.service';
+import { DockerService, ServiceSpec } from '../../docker/docker.service';
+import { TenantRepository } from '../repositories/tenant.repository';
+import { TenantDatabase } from './tenant-database.service';
 
 export interface WordPressInstance {
     tenantId: string;
@@ -10,6 +11,12 @@ export interface WordPressInstance {
     status: 'creating' | 'running' | 'stopped' | 'error';
     replicas: number;
     runningReplicas: number;
+}
+
+export interface WordPressDeployOptions {
+    wpAdminUser: string;
+    wpAdminPassword: string;
+    replicas: number;
 }
 
 @Injectable()
@@ -22,7 +29,7 @@ export class WordPressService {
     constructor(
         private configService: ConfigService,
         private dockerService: DockerService,
-        private databaseService: DatabaseService,
+        private tenantRepository: TenantRepository,
     ) {
         this.domain = this.configService.get<string>('DOMAIN', 'localhost');
         // SERVER_IP for WordPress redirects - use actual IP, not localhost
@@ -36,11 +43,17 @@ export class WordPressService {
     async deployWordPress(
         tenantId: string,
         subdomain: string,
-        database: TenantDatabase
+        database: TenantDatabase,
+        options?: WordPressDeployOptions
     ): Promise<string> {
         const serviceName = `wp_${tenantId}`;
         // Use Docker named volume for wp-content (themes, plugins)
         const volumeName = `wp_content_${tenantId}`;
+
+        // WordPress admin credentials
+        const wpAdminUser = options?.wpAdminUser || 'admin';
+        const wpAdminPassword = options?.wpAdminPassword || 'changeme123';
+        const replicas = options?.replicas || 2;
 
         // MinIO/S3 configuration for media uploads
         const minioEndpoint = this.configService.get<string>('MINIO_ENDPOINT', 'http://minio:9000');
@@ -51,14 +64,19 @@ export class WordPressService {
         const spec: ServiceSpec = {
             name: serviceName,
             image: this.wpImage,
-            replicas: 2, // High availability requirement
+            replicas, // Use plan-based replicas
             env: [
                 `WORDPRESS_DB_HOST=${database.host}:${database.port}`,
                 `WORDPRESS_DB_USER=${database.user}`,
                 `WORDPRESS_DB_PASSWORD=${database.password}`,
                 `WORDPRESS_DB_NAME=${database.name}`,
                 `WORDPRESS_TABLE_PREFIX=wp_`,
-                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+                // WordPress admin credentials for auto-setup
+                `WORDPRESS_ADMIN_USER=${wpAdminUser}`,
+                `WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
+                // WordPress configuration for path-based access at IP/subdomain
+                // WP_HOME and WP_SITEURL tell WordPress its full URL including the path
+                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
                 // S3/MinIO configuration for WP Offload Media plugin
                 `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
                 `S3_UPLOADS_BUCKET=${minioBucket}`,
@@ -71,13 +89,19 @@ export class WordPressService {
                 'wp-paas.tenant': tenantId,
                 'wp-paas.subdomain': subdomain,
                 'wp-paas.type': 'wordpress',
-                // Traefik labels for automatic routing via path (http://IP/subdomain/)
+                // Traefik labels for path-based routing (http://IP/subdomain/)
+                // Strip the prefix so WordPress receives requests at /
+                // WordPress is configured with WP_HOME/WP_SITEURL to generate correct URLs
                 'traefik.enable': 'true',
+                'traefik.docker.network': 'wp_paas_proxy_network',
                 [`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
                 [`traefik.http.routers.${serviceName}.entrypoints`]: 'web',
-                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-stripprefix`,
-                [`traefik.http.middlewares.${serviceName}-stripprefix.stripprefix.prefixes`]: `/${subdomain}`,
+                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-strip`,
+                [`traefik.http.middlewares.${serviceName}-strip.stripprefix.prefixes`]: `/${subdomain}`,
                 [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: '80',
+                // Health check for the service
+                [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]: '/',
+                [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.interval`]: '10s',
             },
             mounts: [
                 {
@@ -98,7 +122,7 @@ export class WordPressService {
         };
 
         const serviceId = await this.dockerService.createService(spec);
-        this.logger.log(`WordPress deployed: ${serviceName} (${serviceId})`);
+        this.logger.log(`WordPress deployed: ${serviceName} (${serviceId}) with ${replicas} replicas`);
 
         return serviceId;
     }
@@ -111,7 +135,7 @@ export class WordPressService {
             return null;
         }
 
-        const tenant = await this.databaseService.getTenant(tenantId);
+        const tenant = await this.tenantRepository.findById(tenantId);
 
         return {
             tenantId,
@@ -126,14 +150,17 @@ export class WordPressService {
     async stopWordPress(tenantId: string): Promise<void> {
         const serviceName = `wp_${tenantId}`;
         await this.dockerService.scaleService(serviceName, 0);
-        await this.databaseService.updateTenantStatus(tenantId, 'stopped');
+        await this.tenantRepository.updateStatus(tenantId, 'stopped');
         this.logger.log(`WordPress stopped: ${serviceName}`);
     }
 
     async startWordPress(tenantId: string): Promise<void> {
         const serviceName = `wp_${tenantId}`;
-        await this.dockerService.scaleService(serviceName, 2);
-        await this.databaseService.updateTenantStatus(tenantId, 'running');
+        // Get tenant to find out the desired replicas from plan
+        const tenant = await this.tenantRepository.findById(tenantId);
+        const replicas = tenant?.replicas || 2;
+        await this.dockerService.scaleService(serviceName, replicas);
+        await this.tenantRepository.updateStatus(tenantId, 'running');
         this.logger.log(`WordPress started: ${serviceName}`);
     }
 

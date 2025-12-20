@@ -138,7 +138,7 @@ export default function DashboardPage() {
                                         <div>
                                             <h4 className="font-medium">{instance.name}</h4>
                                             <p className="text-sm text-muted-foreground">
-                                                {instance.subdomain}.{process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}
+                                                {process.env.NEXT_PUBLIC_SERVER_IP || process.env.NEXT_PUBLIC_DOMAIN || 'localhost'}/{instance.subdomain}
                                             </p>
                                         </div>
                                     </div>

@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  creating
+  running
+  stopped
+  error
+  deleted
+}
+
+enum PlanTier {
+  free
+  starter
+  professional
+  enterprise
+}
+
+enum SubscriptionStatus {
+  active
+  expired
+  cancelled
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenants       Tenant[]
+  subscriptions Subscription[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Tenant {
+  id              String       @id @default(cuid())
+  userId          String       @map("user_id")
+  name            String
+  subdomain       String       @unique
+  dbName          String       @map("db_name")
+  dbUser          String       @map("db_user")
+  dbPassword      String       @map("db_password")
+  wpAdminUser     String       @default("admin") @map("wp_admin_user")
+  wpAdminPassword String?      @map("wp_admin_password")
+  planId          PlanTier     @default(free) @map("plan_id")
+  replicas        Int          @default(1)
+  status          TenantStatus @default(creating)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([subdomain])
+  @@index([status])
+  @@index([planId])
+  @@map("tenants")
+}
+
+model Subscription {
+  id        String             @id @default(cuid())
+  userId    String             @map("user_id")
+  planId    PlanTier           @default(free) @map("plan_id")
+  status    SubscriptionStatus @default(active)
+  startDate DateTime           @default(now()) @map("start_date")
+  endDate   DateTime?          @map("end_date")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([endDate])
+  @@map("subscriptions")
+}

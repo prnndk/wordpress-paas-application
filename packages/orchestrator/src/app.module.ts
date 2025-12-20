@@ -4,6 +4,7 @@ import { DockerModule } from './docker/docker.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
     imports: [
@@ -11,6 +12,7 @@ import { HealthModule } from './health/health.module';
             isGlobal: true,
             envFilePath: ['.env.local', '.env'],
         }),
+        PrismaModule,
         DockerModule,
         TenantsModule,
         AuthModule,
@@ -18,3 +20,4 @@ import { HealthModule } from './health/health.module';
     ],
 })
 export class AppModule { }
+

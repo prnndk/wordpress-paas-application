@@ -21,8 +21,8 @@ import {
     ApiParam,
     ApiQuery,
 } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, Matches, MaxLength, MinLength } from 'class-validator';
-import { TenantsService, TenantDetails } from './tenants.service';
+import { IsString, IsNotEmpty, Matches, MaxLength, MinLength, IsOptional } from 'class-validator';
+import { TenantsService, TenantDetails } from './services/tenants.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 class CreateTenantRequestDto {
@@ -39,6 +39,18 @@ class CreateTenantRequestDto {
         message: 'Subdomain must be lowercase alphanumeric with hyphens, starting and ending with alphanumeric',
     })
     subdomain!: string;
+
+    @IsString()
+    @IsOptional()
+    @MinLength(3)
+    @MaxLength(32)
+    wpAdminUser?: string;
+
+    @IsString()
+    @IsOptional()
+    @MinLength(8)
+    @MaxLength(64)
+    wpAdminPassword?: string;
 }
 
 interface AuthenticatedRequest extends Request {
@@ -70,8 +82,11 @@ export class TenantsController {
             userId: req.user.id,
             name: dto.name,
             subdomain: dto.subdomain,
+            wpAdminUser: dto.wpAdminUser,
+            wpAdminPassword: dto.wpAdminPassword,
         });
     }
+
 
     @Get()
     @ApiOperation({ summary: 'List all WordPress instances for current user' })
