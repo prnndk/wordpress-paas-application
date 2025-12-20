@@ -36,7 +36,7 @@ export class WordPressService {
         this.serverIp = this.configService.get<string>('SERVER_IP', this.domain);
         this.wpImage = this.configService.get<string>(
             'WORDPRESS_IMAGE',
-            'wordpress:6.4-php8.2-apache'
+            'prnndk/wp-paas-wordpress:latest'
         );
     }
 
@@ -90,15 +90,17 @@ export class WordPressService {
                 'wp-paas.subdomain': subdomain,
                 'wp-paas.type': 'wordpress',
                 // Traefik labels for path-based routing (http://IP/subdomain/)
-                // Strip the prefix so WordPress receives requests at /
-                // WordPress is configured with WP_HOME/WP_SITEURL to generate correct URLs
                 'traefik.enable': 'true',
                 'traefik.docker.network': 'wp_paas_proxy_network',
                 [`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
                 [`traefik.http.routers.${serviceName}.entrypoints`]: 'web',
-                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-strip`,
-                [`traefik.http.middlewares.${serviceName}-strip.stripprefix.prefixes`]: `/${subdomain}`,
+                // Use replacepathregex to strip path for WordPress but keep it for redirects
+                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-rewrite`,
+                // ReplacePath regex: /subdomain/(.*)  -> /$1
+                [`traefik.http.middlewares.${serviceName}-rewrite.replacepathregex.regex`]: `^/${subdomain}/(.*)`,
+                [`traefik.http.middlewares.${serviceName}-rewrite.replacepathregex.replacement`]: `/$1`,
                 [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: '80',
+                [`traefik.http.services.${serviceName}.loadbalancer.passHostHeader`]: 'true',
                 // Health check for the service
                 [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]: '/',
                 [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.interval`]: '10s',

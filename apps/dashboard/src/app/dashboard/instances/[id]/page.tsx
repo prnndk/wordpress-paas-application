@@ -30,7 +30,11 @@ import {
     HardDrive,
     Clock,
     Activity,
-    AlertTriangle
+    AlertTriangle,
+    Cpu,
+    MemoryStick,
+    Network,
+    RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -47,6 +51,21 @@ interface Instance {
     storagePath?: string;
 }
 
+interface ContainerMetrics {
+    containerId: string;
+    containerName: string;
+    status: string;
+    stats: {
+        cpuPercent: number;
+        memoryUsage: number;
+        memoryLimit: number;
+        memoryPercent: number;
+        networkRx: number;
+        networkTx: number;
+    } | null;
+    timestamp: string;
+}
+
 export default function InstanceDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -55,6 +74,8 @@ export default function InstanceDetailPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [metrics, setMetrics] = useState<ContainerMetrics[]>([]);
+    const [metricsLoading, setMetricsLoading] = useState(false);
 
     const instanceId = params.id as string;
 
@@ -97,11 +118,42 @@ export default function InstanceDetailPage() {
         }
     };
 
+    const fetchMetrics = async () => {
+        if (!instance?.subdomain) return;
+
+        setMetricsLoading(true);
+        const token = localStorage.getItem('accessToken');
+
+        try {
+            const res = await fetch(`/api/v1/tenants/${instance.subdomain}/metrics`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setMetrics(data.data || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch metrics:', error);
+        } finally {
+            setMetricsLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (instanceId) {
             fetchInstance();
         }
     }, [instanceId]);
+
+    // Auto-refresh metrics every 10 seconds
+    useEffect(() => {
+        if (instance?.subdomain && instance?.status === 'running') {
+            fetchMetrics();
+            const interval = setInterval(fetchMetrics, 10000);
+            return () => clearInterval(interval);
+        }
+    }, [instance?.subdomain, instance?.status]);
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'delete') => {
         setActionLoading(action);
@@ -431,6 +483,116 @@ export default function InstanceDetailPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Resource Monitoring Section */}
+            {instance.status === 'running' && (
+                <Card className="glass gradient-border">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                                <Activity className="w-5 h-5 text-primary" />
+                                Resource Usage
+                            </span>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={fetchMetrics}
+                                disabled={metricsLoading}
+                            >
+                                <RefreshCw className={cn("w-4 h-4", metricsLoading && "animate-spin")} />
+                            </Button>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {metrics.length === 0 ? (
+                            <div className="text-center text-muted-foreground py-4">
+                                {metricsLoading ? (
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading metrics...
+                                    </div>
+                                ) : (
+                                    'No metrics available'
+                                )}
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {metrics.map((container) => (
+                                    <div key={container.containerId} className="space-y-4">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Server className="w-4 h-4" />
+                                            <span className="font-mono">{container.containerName}</span>
+                                            <span className={cn(
+                                                "px-2 py-0.5 rounded-full text-xs",
+                                                container.status === 'running'
+                                                    ? 'bg-green-500/20 text-green-400'
+                                                    : 'bg-yellow-500/20 text-yellow-400'
+                                            )}>
+                                                {container.status}
+                                            </span>
+                                        </div>
+
+                                        {container.stats && (
+                                            <div className="grid md:grid-cols-3 gap-4">
+                                                {/* CPU */}
+                                                <div className="p-4 rounded-lg bg-card/50 border">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <Cpu className="w-4 h-4 text-blue-400" />
+                                                        <span className="text-sm text-muted-foreground">CPU</span>
+                                                    </div>
+                                                    <p className="text-2xl font-bold">{container.stats.cpuPercent.toFixed(1)}%</p>
+                                                    <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-500"
+                                                            style={{ width: `${Math.min(container.stats.cpuPercent, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Memory */}
+                                                <div className="p-4 rounded-lg bg-card/50 border">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <MemoryStick className="w-4 h-4 text-purple-400" />
+                                                        <span className="text-sm text-muted-foreground">Memory</span>
+                                                    </div>
+                                                    <p className="text-2xl font-bold">{container.stats.memoryPercent.toFixed(1)}%</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {(container.stats.memoryUsage / 1024 / 1024).toFixed(0)} MB / {(container.stats.memoryLimit / 1024 / 1024).toFixed(0)} MB
+                                                    </p>
+                                                    <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                                                            style={{ width: `${Math.min(container.stats.memoryPercent, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Network */}
+                                                <div className="p-4 rounded-lg bg-card/50 border">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <Network className="w-4 h-4 text-green-400" />
+                                                        <span className="text-sm text-muted-foreground">Network</span>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-sm">
+                                                            <span className="text-muted-foreground">↓ RX</span>
+                                                            <span className="font-medium">{(container.stats.networkRx / 1024 / 1024).toFixed(2)} MB</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-sm">
+                                                            <span className="text-muted-foreground">↑ TX</span>
+                                                            <span className="font-medium">{(container.stats.networkTx / 1024 / 1024).toFixed(2)} MB</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 }

@@ -36,13 +36,17 @@ export default function DashboardPage() {
             headers: { Authorization: `Bearer ${token}` },
         })
             .then((res) => res.json())
-            .then(setInstances)
+            .then((data) => {
+                // Handle both array response and {data: [...]} format
+                const instancesArray = Array.isArray(data) ? data : (data?.data || data?.instances || []);
+                setInstances(instancesArray);
+            })
             .catch(console.error)
             .finally(() => setIsLoading(false));
     }, []);
 
-    const runningCount = instances.filter((i) => i.status === 'running').length;
-    const totalReplicas = instances.reduce((acc, i) => acc + i.runningReplicas, 0);
+    const runningCount = Array.isArray(instances) ? instances.filter((i) => i.status === 'running').length : 0;
+    const totalReplicas = Array.isArray(instances) ? instances.reduce((acc, i) => acc + (i.runningReplicas || 0), 0) : 0;
 
     return (
         <div className="space-y-8">
