@@ -16,6 +16,7 @@ export interface WordPressInstance {
 export class WordPressService {
     private readonly logger = new Logger(WordPressService.name);
     private readonly domain: string;
+    private readonly serverIp: string;
     private readonly wpImage: string;
 
     constructor(
@@ -24,6 +25,8 @@ export class WordPressService {
         private databaseService: DatabaseService,
     ) {
         this.domain = this.configService.get<string>('DOMAIN', 'localhost');
+        // SERVER_IP for WordPress redirects - use actual IP, not localhost
+        this.serverIp = this.configService.get<string>('SERVER_IP', this.domain);
         this.wpImage = this.configService.get<string>(
             'WORDPRESS_IMAGE',
             'wordpress:6.4-php8.2-apache'
@@ -55,7 +58,7 @@ export class WordPressService {
                 `WORDPRESS_DB_PASSWORD=${database.password}`,
                 `WORDPRESS_DB_NAME=${database.name}`,
                 `WORDPRESS_TABLE_PREFIX=wp_`,
-                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${subdomain}.${this.domain}'); define('WP_SITEURL', 'http://${subdomain}.${this.domain}'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
                 // S3/MinIO configuration for WP Offload Media plugin
                 `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
                 `S3_UPLOADS_BUCKET=${minioBucket}`,
@@ -68,10 +71,12 @@ export class WordPressService {
                 'wp-paas.tenant': tenantId,
                 'wp-paas.subdomain': subdomain,
                 'wp-paas.type': 'wordpress',
-                // Traefik labels for automatic routing
+                // Traefik labels for automatic routing via path (http://IP/subdomain/)
                 'traefik.enable': 'true',
-                [`traefik.http.routers.${serviceName}.rule`]: `Host(\`${subdomain}.${this.domain}\`)`,
+                [`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
                 [`traefik.http.routers.${serviceName}.entrypoints`]: 'web',
+                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-stripprefix`,
+                [`traefik.http.middlewares.${serviceName}-stripprefix.stripprefix.prefixes`]: `/${subdomain}`,
                 [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: '80',
             },
             mounts: [
@@ -83,6 +88,13 @@ export class WordPressService {
             ],
             networks: ['wp_paas_network', 'wp_paas_db_network', 'wp_paas_proxy_network'],
             constraints: ['node.role == worker'],
+            // Expose WordPress port via Swarm ingress (accessible on all nodes)
+            ports: [
+                {
+                    targetPort: 80,
+                    // No publishedPort = Docker assigns random port 30000+
+                },
+            ],
         };
 
         const serviceId = await this.dockerService.createService(spec);

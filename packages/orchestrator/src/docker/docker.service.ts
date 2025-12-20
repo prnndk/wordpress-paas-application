@@ -15,6 +15,11 @@ export interface ServiceSpec {
     }>;
     networks: string[];
     constraints?: string[];
+    ports?: Array<{
+        targetPort: number;
+        publishedPort?: number;
+        protocol?: 'tcp' | 'udp';
+    }>;
 }
 
 export interface ServiceInfo {
@@ -113,6 +118,12 @@ export class DockerService implements OnModuleInit {
             Labels: spec.labels, // Keep labels on service level too for filtering
             EndpointSpec: {
                 Mode: 'vip',
+                Ports: spec.ports?.map(p => ({
+                    TargetPort: p.targetPort,
+                    PublishedPort: p.publishedPort,
+                    Protocol: p.protocol || 'tcp',
+                    PublishMode: 'ingress' as const,
+                })) || [],
             },
         };
 
