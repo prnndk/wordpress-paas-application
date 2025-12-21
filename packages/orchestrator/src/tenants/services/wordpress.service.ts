@@ -27,21 +27,21 @@ export class WordPressService {
 	private readonly logger = new Logger(WordPressService.name);
 	private readonly domain: string;
 	private readonly serverIp: string;
-	// private readonly wpImage: string; // Removed static image property
+	private readonly wpImage: string;
 
-    constructor(
-        private configService: ConfigService,
-        private dockerService: DockerService,
-        private tenantRepository: TenantRepository,
-    ) {
-        this.domain = this.configService.get<string>('DOMAIN', 'localhost');
-        // SERVER_IP for WordPress redirects - use actual IP, not localhost
-        this.serverIp = this.configService.get<string>('SERVER_IP', this.domain);
-        this.wpImage = this.configService.get<string>(
-            'WORDPRESS_IMAGE',
-            'prnndk/wp-paas-wordpress:latest'
-        );
-    }
+	constructor(
+		private configService: ConfigService,
+		private dockerService: DockerService,
+		private tenantRepository: TenantRepository
+	) {
+		this.domain = this.configService.get<string>("DOMAIN", "localhost");
+		// SERVER_IP for WordPress redirects - use actual IP, not localhost
+		this.serverIp = this.configService.get<string>("SERVER_IP", this.domain);
+		this.wpImage = this.configService.get<string>(
+			"WORDPRESS_IMAGE",
+			"prnndk/wp-paas-wordpress:latest"
+		);
+	}
 
 	async deployWordPress(
 		tenantId: string,
@@ -73,68 +73,75 @@ export class WordPressService {
 		);
 		const minioBucket = `wp-uploads`;
 
-        const spec: ServiceSpec = {
-            name: serviceName,
-            image: this.wpImage,
-            replicas, // Use plan-based replicas
-            env: [
-                `WORDPRESS_DB_HOST=${database.host}:${database.port}`,
-                `WORDPRESS_DB_USER=${database.user}`,
-                `WORDPRESS_DB_PASSWORD=${database.password}`,
-                `WORDPRESS_DB_NAME=${database.name}`,
-                `WORDPRESS_TABLE_PREFIX=wp_`,
-                // WordPress admin credentials for auto-setup
-                `WORDPRESS_ADMIN_USER=${wpAdminUser}`,
-                `WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
-                // WordPress configuration for path-based access at IP/subdomain
-                // WP_HOME and WP_SITEURL tell WordPress its full URL including the path
-                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
-                // S3/MinIO configuration for WP Offload Media plugin
-                `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
-                `S3_UPLOADS_BUCKET=${minioBucket}`,
-                `S3_UPLOADS_KEY=${minioAccessKey}`,
-                `S3_UPLOADS_SECRET=${minioSecretKey}`,
-                `S3_UPLOADS_REGION=us-east-1`,
-                `S3_UPLOADS_USE_PATH_STYLE=true`,
-            ],
-            labels: {
-                'wp-paas.tenant': tenantId,
-                'wp-paas.tenant-id': tenantId,
-                'wp-paas.subdomain': subdomain,
-                'wp-paas.type': 'wordpress',
-                // Traefik labels for path-based routing (http://IP/subdomain/)
-                'traefik.enable': 'true',
-                'traefik.docker.network': 'wp_paas_proxy_network',
-                [`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
-                [`traefik.http.routers.${serviceName}.entrypoints`]: 'web',
-                // Use replacepathregex to strip path for WordPress but keep it for redirects
-                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-rewrite`,
-                // ReplacePath regex: /subdomain/(.*)  -> /$1
-                [`traefik.http.middlewares.${serviceName}-rewrite.replacepathregex.regex`]: `^/${subdomain}/(.*)`,
-                [`traefik.http.middlewares.${serviceName}-rewrite.replacepathregex.replacement`]: `/$1`,
-                [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: '80',
-                [`traefik.http.services.${serviceName}.loadbalancer.passHostHeader`]: 'true',
-                // Health check for the service
-                [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]: '/',
-                [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.interval`]: '10s',
-            },
-            mounts: [
-                {
-                    source: volumeName,
-                    target: '/var/www/html/wp-content',
-                    type: 'volume', // Changed from 'bind' to 'volume'
-                },
-            ],
-            networks: ['wp_paas_network', 'wp_paas_db_network', 'wp_paas_proxy_network'],
-            constraints: ['node.role == worker'],
-            // Expose WordPress port via Swarm ingress (accessible on all nodes)
-            ports: [
-                {
-                    targetPort: 80,
-                    // No publishedPort = Docker assigns random port 30000+
-                },
-            ],
-        };
+		const spec: ServiceSpec = {
+			name: serviceName,
+			image: this.wpImage,
+			replicas, // Use plan-based replicas
+			env: [
+				`WORDPRESS_DB_HOST=${database.host}:${database.port}`,
+				`WORDPRESS_DB_USER=${database.user}`,
+				`WORDPRESS_DB_PASSWORD=${database.password}`,
+				`WORDPRESS_DB_NAME=${database.name}`,
+				`WORDPRESS_TABLE_PREFIX=wp_`,
+				// WordPress admin credentials for auto-setup
+				`WORDPRESS_ADMIN_USER=${wpAdminUser}`,
+				`WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
+				// WordPress configuration for path-based access at IP/subdomain
+				// WP_HOME and WP_SITEURL tell WordPress its full URL including the path
+				`WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+				// S3/MinIO configuration for WP Offload Media plugin
+				`S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
+				`S3_UPLOADS_BUCKET=${minioBucket}`,
+				`S3_UPLOADS_KEY=${minioAccessKey}`,
+				`S3_UPLOADS_SECRET=${minioSecretKey}`,
+				`S3_UPLOADS_REGION=us-east-1`,
+				`S3_UPLOADS_USE_PATH_STYLE=true`,
+			],
+			labels: {
+				"wp-paas.tenant": tenantId,
+				"wp-paas.tenant-id": tenantId,
+				"wp-paas.subdomain": subdomain,
+				"wp-paas.type": "wordpress",
+				// Traefik labels for path-based routing (http://IP/subdomain/)
+				"traefik.enable": "true",
+				"traefik.docker.network": "wp_paas_proxy_network",
+				[`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
+				[`traefik.http.routers.${serviceName}.entrypoints`]: "web",
+				// Use replacepathregex to strip path for WordPress but keep it for redirects
+				[`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-rewrite`,
+				// ReplacePath regex: /subdomain/(.*)  -> /$1
+				[`traefik.http.middlewares.${serviceName}-rewrite.replacepathregex.regex`]: `^/${subdomain}/(.*)`,
+				[`traefik.http.middlewares.${serviceName}-rewrite.replacepathregex.replacement`]: `/$1`,
+				[`traefik.http.services.${serviceName}.loadbalancer.server.port`]: "80",
+				[`traefik.http.services.${serviceName}.loadbalancer.passHostHeader`]:
+					"true",
+				// Health check for the service
+				[`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]:
+					"/",
+				[`traefik.http.services.${serviceName}.loadbalancer.healthcheck.interval`]:
+					"10s",
+			},
+			mounts: [
+				{
+					source: volumeName,
+					target: "/var/www/html/wp-content",
+					type: "volume", // Changed from 'bind' to 'volume'
+				},
+			],
+			networks: [
+				"wp_paas_network",
+				"wp_paas_db_network",
+				"wp_paas_proxy_network",
+			],
+			constraints: ["node.role == worker"],
+			// Expose WordPress port via Swarm ingress (accessible on all nodes)
+			ports: [
+				{
+					targetPort: 80,
+					// No publishedPort = Docker assigns random port 30000+
+				},
+			],
+		};
 
 		const serviceId = await this.dockerService.createService(spec);
 		this.logger.log(

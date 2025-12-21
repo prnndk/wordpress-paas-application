@@ -358,6 +358,66 @@ export class TenantsService {
 		};
 	}
 
+	async getAllTenants(): Promise<TenantDetails[]> {
+		const tenants = await this.tenantRepository.findAll();
+
+		const results: TenantDetails[] = [];
+		for (const tenant of tenants) {
+			const wpInstance = await this.wordpressService.getWordPressInstance(
+				tenant.id
+			);
+
+			// Parse endpoints from stored JSON or build them
+			let endpoints = this.buildEndpoints(tenant.slug);
+			if (tenant.endpoints) {
+				try {
+					const stored = JSON.parse(tenant.endpoints);
+					if (stored.site && stored.admin) {
+						endpoints = stored;
+						// Force trailing slashes
+						if (!endpoints.site.endsWith("/")) endpoints.site += "/";
+						if (!endpoints.admin.endsWith("/")) endpoints.admin += "/";
+					}
+				} catch {
+					// Fall back to building if JSON is invalid
+					endpoints = this.buildEndpoints(tenant.slug);
+				}
+			}
+
+			// Parse env vars
+			let env: { key: string; value: string }[] = [];
+			if (tenant.envVars) {
+				try {
+					env = JSON.parse(tenant.envVars);
+				} catch {
+					env = [];
+				}
+			}
+
+			results.push({
+				id: tenant.id,
+				name: tenant.name,
+				slug: tenant.slug,
+				region: tenant.region,
+				status: wpInstance?.status || tenant.status,
+				endpoints,
+				replicas: wpInstance?.replicas || tenant.replicas || 0,
+				runningReplicas: wpInstance?.runningReplicas || 0,
+				createdAt: tenant.createdAt,
+				planId: tenant.planId,
+				specs: {
+					cpuCores: tenant.cpuCores,
+					ramGb: tenant.ramGb,
+					storageGb: tenant.storageGb,
+				},
+				env,
+				wpAdminEmail: tenant.wpAdminEmail || undefined,
+			});
+		}
+
+		return results;
+	}
+
 	async getTenantsByUser(userId: string): Promise<TenantDetails[]> {
 		const tenants = await this.tenantRepository.findByUserId(userId);
 

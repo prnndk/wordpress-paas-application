@@ -12,10 +12,7 @@ import {
 	refreshProfile,
 	type TenantSummary,
 } from "../src/lib/auth";
-import type {
-	SubscriptionLimits,
-	SubscriptionCurrent,
-} from "../src/types/auth";
+import type { SubscriptionCurrent } from "../src/types/auth";
 import {
 	LayoutDashboard,
 	Server,
@@ -33,8 +30,18 @@ import {
 	CheckCircle2,
 	AlertTriangle,
 	User,
+	Shield,
+	Users,
+	Wrench,
+	ChevronDown,
+	PanelLeftClose,
+	PanelLeftOpen,
+	Megaphone,
+	X,
 } from "lucide-react";
 import { CreateInstanceWizard } from "./modals/CreateInstanceWizard";
+import { announcementService } from "../src/lib/announcements";
+import { Announcement } from "../src/lib/admin";
 
 // --- Types & Context ---
 export interface Instance {
@@ -67,6 +74,7 @@ interface DashboardContextType {
 	quotaUsed: number;
 	quotaAllowed: number;
 	canCreateInstance: boolean;
+	isSidebarCollapsed: boolean;
 }
 
 const DashboardContext = createContext<DashboardContextType | null>(null);
@@ -95,6 +103,84 @@ const tenantToInstance = (tenant: TenantSummary): Instance => ({
 	created_at: tenant.createdAt,
 });
 
+// Navigation Configuration
+interface NavItemConfig {
+	label: string;
+	icon: React.ElementType;
+	path?: string;
+	children?: NavItemConfig[];
+	adminOnly?: boolean;
+	requiredTab?: string;
+	strict?: boolean;
+}
+
+const NAV_GROUPS: { label?: string; items: NavItemConfig[] }[] = [
+	{
+		items: [
+			{
+				label: "Overview",
+				icon: LayoutDashboard,
+				path: "/dashboard",
+				strict: true,
+			},
+			{
+				label: "My Instances",
+				icon: Server,
+				path: "/dashboard/instances",
+			},
+			{
+				label: "Billing & Usage",
+				icon: CreditCard,
+				path: "/settings",
+				requiredTab: "billing",
+			},
+		],
+	},
+	{
+		label: "Admin Console",
+		items: [
+			{
+				label: "Administration",
+				icon: Shield,
+				adminOnly: true,
+				children: [
+					{
+						label: "User Management",
+						icon: Users,
+						path: "/admin/users",
+					},
+					{
+						label: "Maintenance",
+						icon: Wrench,
+						path: "/admin/maintenance",
+					},
+				],
+			},
+		],
+	},
+	{
+		label: "Configuration",
+		items: [
+			{
+				label: "Settings",
+				icon: Settings,
+				path: "/settings",
+				requiredTab: "general",
+			},
+			{
+				label: "API Reference",
+				icon: FileText,
+				path: "/api-reference",
+			},
+			{
+				label: "Support",
+				icon: LifeBuoy,
+				path: "/contact",
+			},
+		],
+	},
+];
+
 export const DashboardLayout: React.FC = () => {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -112,23 +198,61 @@ export const DashboardLayout: React.FC = () => {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [loading, setLoading] = useState(true);
 
+	// Sidebar State
+	const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+		const stored = localStorage.getItem("sidebar_collapsed");
+		return stored === "true";
+	});
+	const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
+		Administration: true,
+	});
+
+	// Announcement State
+	const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+	const [showAnnouncements, setShowAnnouncements] = useState(false);
+	const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
+
+	useEffect(() => {
+		const fetchAnnouncements = async () => {
+			try {
+				const data = await announcementService.getActiveAnnouncements();
+				setAnnouncements(data);
+				// Check for unread logic or just presence for now
+				if (data.length > 0) {
+					setHasUnreadAnnouncements(true);
+				}
+			} catch (error) {
+				console.error("Failed to fetch announcements", error);
+			}
+		};
+		fetchAnnouncements();
+	}, []);
+
+	const toggleSidebar = () => {
+		const newState = !isSidebarCollapsed;
+		setIsSidebarCollapsed(newState);
+		localStorage.setItem("sidebar_collapsed", String(newState));
+	};
+
+	const toggleMenu = (label: string) => {
+		if (isSidebarCollapsed) {
+			setIsSidebarCollapsed(false);
+			setExpandedMenus((prev) => ({ ...prev, [label]: true }));
+		} else {
+			setExpandedMenus((prev) => ({ ...prev, [label]: !prev[label] }));
+		}
+	};
+
 	// Quota calculations
 	const quotaUsed = instances.length;
 	const quotaAllowed = subscription?.limits?.instances ?? 1;
-	const canCreateInstance = quotaAllowed === -1 || quotaUsed < quotaAllowed; // -1 means unlimited
+	const canCreateInstance = quotaAllowed === -1 || quotaUsed < quotaAllowed;
 
-	// Fetch instances and subscription from cached profile or refresh
-	// Fetch instances and subscription from cached profile or refresh
+	// Fetch instances and subscription
 	const refreshInstances = useCallback(async (force: boolean = false) => {
 		try {
-			// Don't set loading state for background refreshes to avoid full re-renders
-			// causing jitter, unless specifically needed.
 			if (force) setLoading(true);
-
-			// First try cached profile
 			let profile = force ? null : getCachedProfile();
-
-			// If no cached profile or no tenants, refresh from backend
 			if (!profile || !profile.tenants) {
 				profile = await refreshProfile([
 					"tenants",
@@ -137,20 +261,11 @@ export const DashboardLayout: React.FC = () => {
 					"audit",
 				]);
 			}
-
 			if (profile) {
-				// Update instances
 				if (profile.tenants) {
 					const convertedInstances = profile.tenants.map(tenantToInstance);
-					// prevent unnecessary state updates if data matches deep equality (optional optimization)
-					setInstances((prev) => {
-						// Simple length check optimization for now, typically enough to stop loops if references change
-						// but ideally we rely on useCallback stability
-						return convertedInstances;
-					});
+					setInstances(() => convertedInstances);
 				}
-
-				// Update subscription and current plan
 				if (profile.subscriptions?.current) {
 					setSubscription(profile.subscriptions.current);
 					setCurrentPlan(profile.subscriptions.current.planName);
@@ -158,15 +273,12 @@ export const DashboardLayout: React.FC = () => {
 			}
 		} catch (error) {
 			console.error("Failed to fetch instances:", error);
-			// Keep existing instances on error
 		} finally {
 			if (force) setLoading(false);
 		}
 	}, []);
 
-	// Load instances on mount
 	useEffect(() => {
-		// Delay to prevent excessive fetching on load
 		const timer = setTimeout(() => {
 			refreshInstances();
 		}, 2000);
@@ -176,7 +288,7 @@ export const DashboardLayout: React.FC = () => {
 	// Actions
 	const addInstance = (instance: Instance) => {
 		setInstances([instance, ...instances]);
-		refreshInstances(); // Refresh to get latest from backend
+		refreshInstances();
 	};
 
 	const updateInstanceStatus = (id: string, status: Instance["status"]) => {
@@ -185,7 +297,7 @@ export const DashboardLayout: React.FC = () => {
 
 	const deleteInstance = (id: string) => {
 		setInstances(instances.filter((i) => i.id !== id));
-		refreshInstances(); // Refresh to sync with backend
+		refreshInstances();
 	};
 
 	const handleLogout = () => {
@@ -193,7 +305,7 @@ export const DashboardLayout: React.FC = () => {
 		navigate("/login");
 	};
 
-	// Close dropdowns on click outside
+	// Close dropdowns
 	useEffect(() => {
 		const closeDropdowns = () => {
 			setIsProfileOpen(false);
@@ -203,15 +315,19 @@ export const DashboardLayout: React.FC = () => {
 		return () => document.removeEventListener("click", closeDropdowns);
 	}, []);
 
-	// --- ROBUST LINK LOGIC ---
+	// Styles
 	const getLinkClass = (
-		path: string,
+		path?: string,
 		strict: boolean = false,
-		requiredTab?: string
+		requiredTab?: string,
+		isChild: boolean = false
 	) => {
-		const baseClass =
-			"group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200";
-		const activeClass = "bg-indigo-50 text-indigo-700";
+		if (!path) return "";
+
+		const baseClass = `group flex items-center ${
+			isChild ? "pl-11 pr-3" : "px-3"
+		} py-2 text-sm font-medium rounded-lg transition-all duration-200 mb-0.5`;
+		const activeClass = "bg-indigo-50 text-indigo-700 font-semibold";
 		const inactiveClass =
 			"text-slate-600 hover:bg-slate-50 hover:text-slate-900";
 
@@ -219,30 +335,26 @@ export const DashboardLayout: React.FC = () => {
 			? location.pathname === path
 			: location.pathname.startsWith(path);
 
-		if (!isPathMatch) return `${baseClass} ${inactiveClass}`;
-
-		if (requiredTab) {
-			const searchParams = new URLSearchParams(location.search);
-			const currentTab = searchParams.get("tab");
-
-			if (currentTab === requiredTab) {
-				return `${baseClass} ${activeClass}`;
+		let isActive = false;
+		if (isPathMatch) {
+			if (requiredTab) {
+				const searchParams = new URLSearchParams(location.search);
+				const currentTab = searchParams.get("tab");
+				if (currentTab === requiredTab) isActive = true;
+				else if (requiredTab === "general" && !currentTab) isActive = true;
+			} else {
+				isActive = true;
 			}
-
-			if (requiredTab === "general" && !currentTab) {
-				return `${baseClass} ${activeClass}`;
-			}
-
-			return `${baseClass} ${inactiveClass}`;
 		}
 
-		return `${baseClass} ${activeClass}`;
+		return `${baseClass} ${isActive ? activeClass : inactiveClass}`;
 	};
 
 	const getPageTitle = () => {
-		if (location.pathname.includes("/dashboard/instances"))
+		if (location.pathname.startsWith("/dashboard/instances"))
 			return "My Instances";
 		if (location.pathname === "/dashboard") return "Overview";
+		if (location.pathname.startsWith("/admin")) return "Admin Console";
 		if (location.pathname === "/settings") {
 			const tab = new URLSearchParams(location.search).get("tab");
 			return tab === "billing" ? "Billing & Usage" : "Settings";
@@ -251,7 +363,6 @@ export const DashboardLayout: React.FC = () => {
 		return "Dashboard";
 	};
 
-	// Display Plan Logic
 	const getPlanBadgeColor = (plan: string) => {
 		switch (plan.toLowerCase()) {
 			case "enterprise":
@@ -263,8 +374,94 @@ export const DashboardLayout: React.FC = () => {
 			case "starter":
 				return "bg-slate-100 text-slate-700 border-slate-200";
 			default:
-				return "bg-emerald-100 text-emerald-700 border-emerald-200"; // Custom
+				return "bg-emerald-100 text-emerald-700 border-emerald-200";
 		}
+	};
+
+	// Render Nav Item
+	const renderNavItem = (item: NavItemConfig, isChild: boolean = false) => {
+		if (item.adminOnly && !user?.roles?.includes("admin")) return null;
+
+		const hasChildren = item.children && item.children.length > 0;
+		const isExpanded = expandedMenus[item.label];
+
+		// Check if any child is active to auto-expand (optional, but nice)
+		const isChildActive =
+			hasChildren &&
+			item.children?.some((child) => {
+				const path = child.path;
+				return path && location.pathname.startsWith(path);
+			});
+
+		// Parent with children (e.g. Admin Console header)
+		if (hasChildren) {
+			return (
+				<div key={item.label} className='mb-1'>
+					<button
+						onClick={() => toggleMenu(item.label)}
+						className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+							isChildActive || isExpanded
+								? "text-indigo-700 bg-indigo-50/50"
+								: "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+						}`}
+						title={isSidebarCollapsed ? item.label : undefined}>
+						<div className='flex items-center'>
+							<item.icon
+								className={`h-5 w-5 flex-shrink-0 transition-colors ${
+									isChildActive || isExpanded
+										? "text-indigo-600"
+										: "text-slate-400 group-hover:text-slate-500"
+								}`}
+							/>
+							{!isSidebarCollapsed && (
+								<span className='ml-3 truncate max-w-[140px]'>
+									{item.label}
+								</span>
+							)}
+						</div>
+						{!isSidebarCollapsed && (
+							<ChevronDown
+								className={`h-4 w-4 transition-transform duration-200 ${
+									isExpanded ? "transform rotate-180" : ""
+								}`}
+							/>
+						)}
+					</button>
+
+					{/* Sub-menu items */}
+					<div
+						className={`overflow-hidden transition-all duration-300 ${
+							isExpanded && !isSidebarCollapsed
+								? "max-h-96 opacity-100 mt-1"
+								: "max-h-0 opacity-0"
+						}`}>
+						{item.children?.map((child) => renderNavItem(child, true))}
+					</div>
+				</div>
+			);
+		}
+
+		// Regular Link Item
+		return (
+			<Link
+				key={item.label}
+				to={item.path || "#"}
+				className={getLinkClass(
+					item.path,
+					item.strict,
+					item.requiredTab,
+					isChild
+				)}
+				onClick={() => setMobileMenuOpen(false)}
+				title={isSidebarCollapsed ? item.label : undefined}>
+				<item.icon
+					className={`h-5 w-5 flex-shrink-0 ${isChild ? "h-4 w-4" : ""}`}
+				/>
+				{!isSidebarCollapsed && (
+					<span className='ml-3 truncate max-w-[140px]'>{item.label}</span>
+				)}
+			</Link>
+		);
 	};
 
 	return (
@@ -278,14 +475,13 @@ export const DashboardLayout: React.FC = () => {
 				setCreateModalOpen,
 				user: user || { name: "Guest", email: "guest@wpcube.io" },
 				refreshInstances,
-				// Subscription-Centric additions
 				subscription,
 				quotaUsed,
 				quotaAllowed,
 				canCreateInstance,
+				isSidebarCollapsed,
 			}}>
 			<div className='min-h-screen bg-slate-50 flex font-sans text-slate-900'>
-				{/* Create Instance Wizard */}
 				<CreateInstanceWizard
 					isOpen={isCreateModalOpen}
 					onClose={() => setCreateModalOpen(false)}
@@ -293,132 +489,135 @@ export const DashboardLayout: React.FC = () => {
 
 				{/* --- Sidebar --- */}
 				<div
-					className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out md:translate-x-0 ${
-						mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-					}`}>
+					className={`fixed inset-y-0 left-0 z-40 bg-white border-r border-slate-200 transform transition-all duration-300 ease-in-out ${
+						mobileMenuOpen
+							? "translate-x-0"
+							: "-translate-x-full md:translate-x-0"
+					} ${isSidebarCollapsed ? "w-20" : "w-64"}`}>
 					<div className='flex flex-col h-full'>
-						{/* Logo - Navigates to Home */}
-						<div className='flex items-center h-16 flex-shrink-0 px-6 border-b border-slate-100'>
-							<Link to='/' className='flex items-center gap-3 group'>
-								<div className='w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:bg-indigo-700 transition-colors'>
+						{/* Logo */}
+						<div
+							className={`flex items-center h-16 flex-shrink-0 border-b border-slate-100 ${
+								isSidebarCollapsed ? "justify-center px-0" : "px-6"
+							}`}>
+							<Link
+								to='/'
+								className='flex items-center gap-3 group overflow-hidden'>
+								<div className='w-8 h-8 flex-shrink-0 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:bg-indigo-700 transition-colors'>
 									<Box className='w-5 h-5' />
 								</div>
-								<span className='text-lg font-bold text-slate-900 tracking-tight group-hover:text-indigo-600 transition-colors'>
+								<span
+									className={`text-lg font-bold text-slate-900 tracking-tight whitespace-nowrap transition-opacity duration-300 ${
+										isSidebarCollapsed ? "opacity-0 w-0" : "opacity-100"
+									}`}>
 									WPCube
 								</span>
 							</Link>
 						</div>
 
+						{/* Collapse Toggle - Moved Below Logo */}
+						<div
+							className={`hidden md:flex items-center shrink-0 py-2 border-b border-slate-100 transition-all ${
+								isSidebarCollapsed ? "justify-center" : "justify-end px-4"
+							}`}>
+							<button
+								onClick={toggleSidebar}
+								className='p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors'
+								title={
+									isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"
+								}>
+								{isSidebarCollapsed ? (
+									<PanelLeftOpen className='w-5 h-5' />
+								) : (
+									<PanelLeftClose className='w-5 h-5' />
+								)}
+							</button>
+						</div>
+
 						{/* Nav Items */}
-						<div className='flex-1 flex flex-col overflow-y-auto pt-6 px-4 space-y-1'>
-							<div className='mb-6 px-2'>
+						<div className='flex-1 flex flex-col overflow-y-auto overflow-x-hidden pt-6 px-3 space-y-6'>
+							{/* New Instance Button */}
+							<div className='mb-2'>
 								<button
 									onClick={() => setCreateModalOpen(true)}
-									className='w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 rounded-lg transition-colors shadow-sm'>
-									<Plus className='w-4 h-4' /> New Instance
+									className={`w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 rounded-lg transition-all shadow-sm ${
+										isSidebarCollapsed ? "px-0" : "px-4"
+									}`}
+									title='Create New Instance'>
+									<Plus className='w-5 h-5' />
+									{!isSidebarCollapsed && <span>New Instance</span>}
 								</button>
 							</div>
 
-							<p className='px-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2'>
-								Platform
-							</p>
+							{NAV_GROUPS.map((group, idx) => {
+								// Hide empty groups (e.g. Admin if not admin)
+								const hasVisibleItems = group.items.some(
+									(item) => !item.adminOnly || user?.roles?.includes("admin")
+								);
+								if (!hasVisibleItems) return null;
 
-							<Link
-								to='/dashboard'
-								className={getLinkClass("/dashboard", true)}
-								onClick={() => setMobileMenuOpen(false)}>
-								<LayoutDashboard className='mr-3 h-5 w-5 flex-shrink-0' />{" "}
-								Overview
-							</Link>
-
-							<Link
-								to='/dashboard/instances'
-								className={getLinkClass("/dashboard/instances")}
-								onClick={() => setMobileMenuOpen(false)}>
-								<Server className='mr-3 h-5 w-5 flex-shrink-0' /> My Instances
-							</Link>
-
-							{/* Billing */}
-							<Link
-								to='/settings?tab=billing'
-								className={getLinkClass("/settings", false, "billing")}
-								onClick={() => setMobileMenuOpen(false)}>
-								<CreditCard className='mr-3 h-5 w-5 flex-shrink-0' /> Billing &
-								Usage
-							</Link>
-
-							<div className='pt-6'>
-								<p className='px-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2'>
-									Configuration
-								</p>
-
-								{/* Settings */}
-								<Link
-									to='/settings?tab=general'
-									className={getLinkClass("/settings", false, "general")}
-									onClick={() => setMobileMenuOpen(false)}>
-									<Settings className='mr-3 h-5 w-5 flex-shrink-0' /> Settings
-								</Link>
-
-								<Link
-									to='/api-reference'
-									className={getLinkClass("/api-reference")}
-									onClick={() => setMobileMenuOpen(false)}>
-									<FileText className='mr-3 h-5 w-5 flex-shrink-0' /> API
-									Reference
-								</Link>
-
-								<Link
-									to='/contact'
-									className={getLinkClass("/contact")}
-									onClick={() => setMobileMenuOpen(false)}>
-									<LifeBuoy className='mr-3 h-5 w-5 flex-shrink-0' /> Support
-								</Link>
-							</div>
+								return (
+									<div key={idx} className='space-y-1'>
+										{group.label && !isSidebarCollapsed && (
+											<p className='px-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2'>
+												{group.label}
+											</p>
+										)}
+										{isSidebarCollapsed && group.label && (
+											<div className='h-4'></div>
+										)}
+										{group.items.map((item) => renderNavItem(item))}
+									</div>
+								);
+							})}
 						</div>
 
 						{/* User Footer */}
-						<div className='flex-shrink-0 border-t border-slate-200 p-4'>
+						<div className='flex-shrink-0 border-t border-slate-200 p-3'>
 							<div
-								className='flex items-center w-full p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors'
+								className={`flex items-center rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${
+									isSidebarCollapsed ? "justify-center p-2" : "p-2"
+								}`}
 								onClick={(e) => {
 									e.stopPropagation();
 									setIsProfileOpen(!isProfileOpen);
 								}}>
-								<div className='relative'>
+								<div className='relative flex-shrink-0'>
 									<div className='h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200 uppercase'>
 										{user?.name ? user.name.substring(0, 2) : "GU"}
 									</div>
 									<div className='absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-white'></div>
 								</div>
-								<div className='ml-3 min-w-0 flex-1'>
-									<div className='flex items-center gap-2'>
-										<p className='text-sm font-bold text-slate-900 truncate'>
-											{user?.name || "Guest"}
+
+								{!isSidebarCollapsed && (
+									<div className='ml-3 min-w-0 flex-1 overflow-hidden'>
+										<div className='flex items-center gap-2'>
+											<p className='text-sm font-bold text-slate-900 truncate'>
+												{user?.name || "Guest"}
+											</p>
+										</div>
+										<p className='text-xs text-slate-500 truncate'>
+											{user?.email || "guest@example.com"}
 										</p>
-										<span
-											className={`px-1.5 py-0.5 text-[10px] font-bold rounded uppercase border ${getPlanBadgeColor(
-												currentPlan.toLowerCase()
-											)}`}>
-											{currentPlan}
-										</span>
 									</div>
-									<p className='text-xs text-slate-500 truncate'>
-										{user?.email || "guest@example.com"}
-									</p>
-								</div>
-								<ChevronRight className='w-4 h-4 text-slate-400' />
+								)}
+								{!isSidebarCollapsed && (
+									<ChevronRight className='w-4 h-4 text-slate-400' />
+								)}
 							</div>
 						</div>
 					</div>
 				</div>
 
 				{/* --- Main Content --- */}
-				<div className='flex-1 flex flex-col md:pl-64 transition-all duration-300'>
+				<div
+					className={`flex-1 flex flex-col transition-all duration-300 ${
+						isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
+					}`}>
 					{/* Topbar */}
 					<header className='sticky top-0 z-30 flex-shrink-0 flex h-16 bg-white border-b border-slate-200 shadow-sm'>
 						<div className='flex-1 px-4 sm:px-6 lg:px-8 flex justify-between items-center'>
-							{/* Left: Mobile Menu & Breadcrumbs */}
+							{/* Left: Mobile Menu & Title */}
 							<div className='flex items-center gap-4'>
 								<button
 									onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -426,14 +625,8 @@ export const DashboardLayout: React.FC = () => {
 									<Menu className='w-6 h-6' />
 								</button>
 
-								<nav className='hidden sm:flex items-center text-sm font-medium text-slate-500'>
-									<Link
-										to='/dashboard'
-										className='hover:text-indigo-600 transition-colors'>
-										Home
-									</Link>
-									<ChevronRight className='w-4 h-4 mx-2 text-slate-300' />
-									<span className='text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-md text-xs font-bold uppercase tracking-wide'>
+								<nav className='flex items-center text-sm font-medium'>
+									<span className='text-xl font-bold text-slate-900'>
 										{getPageTitle()}
 									</span>
 								</nav>
@@ -441,19 +634,83 @@ export const DashboardLayout: React.FC = () => {
 
 							{/* Right: Actions */}
 							<div className='flex items-center gap-4'>
-								{/* Search */}
-								<div className='relative w-64 hidden md:block group'>
-									<div className='absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none'>
-										<Search className='h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors' />
-									</div>
-									<input
-										type='text'
-										placeholder='Search resources...'
-										className='block w-full pl-10 pr-3 py-1.5 border border-slate-200 rounded-lg leading-5 bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all'
-									/>
+								<div className='hidden md:block'>
+									<span
+										className={`px-2 py-1 text-xs font-bold rounded uppercase border ${getPlanBadgeColor(
+											currentPlan
+										)}`}>
+										{currentPlan} Plan
+									</span>
 								</div>
+								{/* Announcements */}
+								<div className='relative'>
+									<button
+										onClick={() => setShowAnnouncements(!showAnnouncements)}
+										className='relative p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors'>
+										<Megaphone className='w-5 h-5' />
+										{hasUnreadAnnouncements && (
+											<span className='absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white'></span>
+										)}
+									</button>
 
-								{/* Notifications */}
+									{/* Announcement Popup */}
+									{showAnnouncements && (
+										<div className='absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-200'>
+											<div className='px-4 py-2 border-b border-slate-100 flex justify-between items-center'>
+												<h3 className='font-bold text-slate-900'>
+													Announcements
+												</h3>
+												<button
+													onClick={() => setShowAnnouncements(false)}
+													className='text-slate-400 hover:text-slate-600'>
+													<X className='w-4 h-4' />
+												</button>
+											</div>
+											<div className='max-h-96 overflow-y-auto'>
+												{announcements.length === 0 ? (
+													<div className='p-8 text-center text-slate-500'>
+														<p className='text-sm'>No new announcements</p>
+													</div>
+												) : (
+													<div className='divide-y divide-slate-100'>
+														{announcements.map((announcement) => (
+															<div
+																key={announcement.id}
+																className='p-4 hover:bg-slate-50 transition-colors'>
+																<div className='flex items-start gap-3'>
+																	<div
+																		className={`mt-1 p-1.5 rounded-full flex-shrink-0 ${
+																			announcement.type === "warning"
+																				? "bg-yellow-100 text-yellow-600"
+																				: announcement.type === "maintenance"
+																				? "bg-orange-100 text-orange-600"
+																				: "bg-blue-100 text-blue-600"
+																		}`}>
+																		<Megaphone className='w-3 h-3' />
+																	</div>
+																	<div>
+																		<h4 className='text-sm font-bold text-slate-900'>
+																			{announcement.title}
+																		</h4>
+																		<p className='text-xs text-slate-500 mt-1'>
+																			{announcement.message}
+																		</p>
+																		<span className='text-[10px] text-slate-400 mt-2 block'>
+																			{new Date(
+																				announcement.createdAt
+																			).toLocaleDateString()}
+																		</span>
+																	</div>
+																</div>
+															</div>
+														))}
+													</div>
+												)}
+											</div>
+										</div>
+									)}
+								</div>
+								{/* Notifications */}{" "}
 								<div className='relative'>
 									<button
 										onClick={(e) => {
@@ -465,55 +722,15 @@ export const DashboardLayout: React.FC = () => {
 										<Bell className='w-5 h-5' />
 										<span className='absolute top-2 right-2 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white' />
 									</button>
-
-									{/* Dropdown */}
+									{/* Notification Dropdown (Simplified for brevity) */}
 									{isNotifOpen && (
 										<div className='absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2'>
-											<div className='px-4 py-2 border-b border-slate-100 flex justify-between items-center'>
-												<span className='font-bold text-sm text-slate-900'>
-													Notifications
-												</span>
-												<span className='text-xs text-indigo-600 cursor-pointer'>
-													Mark all read
-												</span>
-											</div>
-											<div className='max-h-64 overflow-y-auto'>
-												<div className='px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-50'>
-													<div className='flex items-start gap-3'>
-														<div className='bg-green-100 p-1.5 rounded-full text-green-600 mt-0.5'>
-															<CheckCircle2 className='w-4 h-4' />
-														</div>
-														<div>
-															<p className='text-sm font-medium text-slate-900'>
-																Invoice Paid
-															</p>
-															<p className='text-xs text-slate-500 mt-0.5'>
-																Your October invoice for $29.00 has been
-																processed.
-															</p>
-														</div>
-													</div>
-												</div>
-												<div className='px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer'>
-													<div className='flex items-start gap-3'>
-														<div className='bg-yellow-100 p-1.5 rounded-full text-yellow-600 mt-0.5'>
-															<AlertTriangle className='w-4 h-4' />
-														</div>
-														<div>
-															<p className='text-sm font-medium text-slate-900'>
-																Usage Warning
-															</p>
-															<p className='text-xs text-slate-500 mt-0.5'>
-																Instance 'Marketing Site' is at 85% CPU usage.
-															</p>
-														</div>
-													</div>
-												</div>
+											<div className='p-4 text-center text-sm text-slate-500'>
+												No new notifications
 											</div>
 										</div>
 									)}
 								</div>
-
 								{/* Profile Dropdown */}
 								<div className='relative ml-2'>
 									<button
@@ -537,14 +754,6 @@ export const DashboardLayout: React.FC = () => {
 												<p className='text-xs text-slate-500 truncate'>
 													{user?.email}
 												</p>
-												<div className='mt-1 flex items-center gap-1'>
-													<span className='text-xs text-slate-400'>
-														Current Plan:
-													</span>
-													<span className='text-xs font-bold text-indigo-600 uppercase'>
-														{currentPlan}
-													</span>
-												</div>
 											</div>
 											<Link
 												to='/profile'
@@ -572,7 +781,7 @@ export const DashboardLayout: React.FC = () => {
 					</header>
 
 					{/* Page Content */}
-					<main className='flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8'>
+					<main className='flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 overflow-x-hidden'>
 						<Outlet />
 					</main>
 				</div>

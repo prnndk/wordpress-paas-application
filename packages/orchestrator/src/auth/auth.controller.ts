@@ -73,19 +73,6 @@ export class AuthController {
 		return this.authService.login(dto.email, dto.password);
 	}
 
-    @Get('me')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get current user profile' })
-    @ApiResponse({ status: 200, description: 'User profile' })
-    @ApiResponse({ status: 401, description: 'Unauthorized' })
-    async me(@Req() req: AuthenticatedRequest): Promise<{ id: string; email: string; name: string | null; role: string }> {
-        const user = await this.authService.getUser(req.user.id);
-        if (!user) {
-            throw new Error('User not found');
-        }
-        return user;
-    }
 	@Get("me")
 	@UseGuards(JwtAuthGuard)
 	@ApiBearerAuth()

@@ -1,35 +1,26 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import {
+	Injectable,
+	CanActivate,
+	ExecutionContext,
+	ForbiddenException,
+} from "@nestjs/common";
 
 @Injectable()
 export class AdminGuard implements CanActivate {
-    constructor(private readonly prisma: PrismaService) { }
+	constructor() {}
 
-    async canActivate(context: ExecutionContext): Promise<boolean> {
-        const request = context.switchToHttp().getRequest();
-        const user = request.user;
+	canActivate(context: ExecutionContext): boolean {
+		const request = context.switchToHttp().getRequest();
+		const user = request.user;
 
-        if (!user?.id) {
-            throw new ForbiddenException('User not authenticated');
-        }
+		if (!user || !user.roles || !Array.isArray(user.roles)) {
+			throw new ForbiddenException("User not authenticated or missing roles");
+		}
 
-        const dbUser = await this.prisma.user.findUnique({
-            where: { id: user.id },
-            select: { role: true, isActive: true },
-        });
+		if (!user.roles.includes("admin")) {
+			throw new ForbiddenException("Admin access required");
+		}
 
-        if (!dbUser) {
-            throw new ForbiddenException('User not found');
-        }
-
-        if (!dbUser.isActive) {
-            throw new ForbiddenException('User account is disabled');
-        }
-
-        if (dbUser.role !== 'admin') {
-            throw new ForbiddenException('Admin access required');
-        }
-
-        return true;
-    }
+		return true;
+	}
 }

@@ -5,7 +5,7 @@
       "Bash(cat:*)",
       "Bash(bash:*)",
       "Bash(ls:*)",
-      "Bash(Dashboard \")",
+      "Bash(Dashboard)",
       "Bash(pnpm --filter @orchestrator prisma migrate dev:*)",
       "Bash(npx prisma migrate:*)"
     ]

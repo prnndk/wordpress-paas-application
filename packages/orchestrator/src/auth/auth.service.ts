@@ -17,6 +17,7 @@ import { MeResponseDto, IncludeOption } from "./dto/me-response.dto";
 export interface UserPayload {
 	id: string;
 	email: string;
+	roles: string[];
 }
 
 export interface AuthTokens {
@@ -57,7 +58,12 @@ export class AuthService {
 			name: name || null,
 		});
 
-		return this.generateTokens({ id: user.id, email: user.email });
+		// Default role is 'user'
+		return this.generateTokens({
+			id: user.id,
+			email: user.email,
+			roles: ["user"],
+		});
 	}
 
 	async login(email: string, password: string): Promise<AuthTokens> {
@@ -73,7 +79,11 @@ export class AuthService {
 			throw new UnauthorizedException("Invalid credentials");
 		}
 
-		return this.generateTokens({ id: user.id, email: user.email });
+		return this.generateTokens({
+			id: user.id,
+			email: user.email,
+			roles: [user.role],
+		});
 	}
 
 	async validateUser(payload: UserPayload): Promise<UserPayload | null> {
@@ -83,7 +93,7 @@ export class AuthService {
 			return null;
 		}
 
-		return { id: user.id, email: user.email };
+		return { id: user.id, email: user.email, roles: [user.role] };
 	}
 
 	async getUser(
@@ -117,7 +127,7 @@ export class AuthService {
 				id: user.id,
 				email: user.email,
 				name: user.name,
-				roles: ["user"], // Default role, extend with actual roles from DB
+				roles: [user.role], // Use actual role from DB
 				createdAt: user.createdAt?.toISOString() || new Date().toISOString(),
 			},
 		};
@@ -125,9 +135,12 @@ export class AuthService {
 		// Fetch tenants if requested
 		if (includes.has("tenants")) {
 			try {
-				const tenantDetails = await this.tenantsService.getTenantsByUser(
-					userId
-				);
+				let tenantDetails;
+				if (user.role === "admin") {
+					tenantDetails = await this.tenantsService.getAllTenants();
+				} else {
+					tenantDetails = await this.tenantsService.getTenantsByUser(userId);
+				}
 
 				// Convert to TenantSummaryDto (limit to 10)
 				response.tenants = tenantDetails.slice(0, 10).map((t) => ({

@@ -8,7 +8,11 @@ import {
 
 // Context & Auth
 import { AuthProvider } from "./context/AuthContext";
-import { RequireAuth, RequireSubscription } from "./components/ProtectedRoutes";
+import {
+	RequireAuth,
+	RequireSubscription,
+	RequireAdmin,
+} from "./components/ProtectedRoutes";
 
 // Utilities
 import ScrollToTop from "./components/ScrollToTop";
@@ -52,6 +56,11 @@ import { PlansPage } from "./components/pages/PlansPage";
 import { ProfilePage } from "./components/pages/ProfilePage";
 import { InstanceList } from "./components/pages/InstanceList";
 import { CheckoutPage } from "./components/pages/CheckoutPage";
+
+// Admin Pages
+import { AdminDashboard } from "./components/pages/AdminDashboard";
+import { AdminUsersPage } from "./components/pages/AdminUsersPage";
+import { MaintenancePage } from "./components/pages/MaintenancePage";
 
 const App: React.FC = () => {
 	return (
@@ -123,6 +132,16 @@ const App: React.FC = () => {
 											<h1>Enterprise Audit Logs</h1>
 										</div>
 									}
+								/>
+							</Route>
+
+							{/* --- Admin Routes (Require Admin Role) --- */}
+							<Route element={<RequireAdmin />}>
+								<Route path='/admin' element={<AdminDashboard />} />
+								<Route path='/admin/users' element={<AdminUsersPage />} />
+								<Route
+									path='/admin/maintenance'
+									element={<MaintenancePage />}
 								/>
 							</Route>
 						</Route>
