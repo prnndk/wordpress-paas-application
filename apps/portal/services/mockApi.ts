@@ -9,7 +9,7 @@ const INITIAL_INSTANCES: Instance[] = [
 		name: "Tech Blog Production",
 		slug: "techblog",
 		endpoints: {
-			site: `https://${VITE_SERVER_IP || "techblog.wpcube.local"}/techblog`,
+			site: `http://${VITE_SERVER_IP || "techblog.wpcube.local"}/techblog`,
 			admin: `https://${
 				VITE_SERVER_IP || "techblog.wpcube.local"
 			}/techblog/wp-admin`,
@@ -25,7 +25,7 @@ const INITIAL_INSTANCES: Instance[] = [
 		name: "Marketing Landing Page",
 		slug: "marketing",
 		endpoints: {
-			site: `https://${VITE_SERVER_IP || "marketing.wpcube.local"}/marketing`,
+			site: `http://${VITE_SERVER_IP || "marketing.wpcube.local"}/marketing`,
 			admin: `https://${
 				VITE_SERVER_IP || "marketing.wpcube.local"
 			}/marketing/wp-admin`,
@@ -99,7 +99,7 @@ export const mockApi = {
 			setTimeout(() => {
 				const fallbackHost = `${data.slug}.wpcube.local`;
 				const siteHost = VITE_SERVER_IP || fallbackHost;
-				const site = `https://${siteHost}/${data.slug}`;
+				const site = `http://${siteHost}/${data.slug}`;
 				const newInstance: Instance = {
 					id: Math.floor(Math.random() * 10000).toString(),
 					name: data.name,

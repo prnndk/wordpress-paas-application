@@ -153,6 +153,7 @@ export default function InstanceDetailPage() {
             const interval = setInterval(fetchMetrics, 10000);
             return () => clearInterval(interval);
         }
+        return undefined;
     }, [instance?.id, instance?.status]);
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'delete') => {

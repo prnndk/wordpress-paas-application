@@ -46,6 +46,9 @@ if ! wp core is-installed --allow-root 2>/dev/null; then
     echo "  Title: $WP_TITLE"
     echo "  Admin User: $WP_ADMIN_USER"
     echo "  Admin Email: $WP_ADMIN_EMAIL"
+    echo ""
+    echo "⚠️  IMPORTANT: Login with USERNAME '$WP_ADMIN_USER', NOT with email!"
+    echo ""
     
     wp core install \
         --url="$WP_URL" \
@@ -57,6 +60,28 @@ if ! wp core is-installed --allow-root 2>/dev/null; then
         --allow-root
     
     echo "[WP-CLI Auto-Install] WordPress installation complete!"
+    
+    # Force update siteurl and home in database to match WP_HOME
+    echo "[WP-CLI Auto-Install] Updating database URLs..."
+    wp option update home "$WP_URL" --allow-root
+    wp option update siteurl "$WP_URL" --allow-root
+    echo "[WP-CLI Auto-Install] Database URLs updated!"
+    
+    # Verify installation and show credentials
+    echo ""
+    echo "================================================"
+    echo "WordPress Installation Summary:"
+    echo "================================================"
+    echo "Site URL: $WP_URL"
+    echo "Login URL: ${WP_URL}/wp-admin/"
+    echo ""
+    echo "LOGIN CREDENTIALS:"
+    echo "  Username: $WP_ADMIN_USER"
+    echo "  Email: $WP_ADMIN_EMAIL"
+    echo ""
+    echo "⚠️  USE USERNAME TO LOGIN, NOT EMAIL!"
+    echo "================================================"
+    echo ""
     
     # Set permalink structure
     wp rewrite structure '/%postname%/' --allow-root 2>/dev/null || true

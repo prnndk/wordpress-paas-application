@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -13,7 +13,6 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import {
-    Users,
     Search,
     Shield,
     ShieldCheck,
@@ -173,8 +172,8 @@ export default function AdminUsersPage() {
                                             onClick={() => toggleUserRole(user.id, user.role === 'admin' ? 'user' : 'admin')}
                                             disabled={updating === user.id}
                                             className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${user.role === 'admin'
-                                                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                                                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                                                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                                                 }`}
                                         >
                                             {user.role === 'admin' ? <ShieldCheck className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
@@ -184,8 +183,8 @@ export default function AdminUsersPage() {
                                     <TableCell>{user._count.tenants}</TableCell>
                                     <TableCell>
                                         <span className={`px-2 py-1 rounded text-xs font-medium ${user.isActive
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                             }`}>
                                             {user.isActive ? 'Active' : 'Disabled'}
                                         </span>
