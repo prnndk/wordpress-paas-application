@@ -95,7 +95,9 @@ export class WordPressService {
                 // IMPORTANT: WP_HOME and WP_SITEURL MUST include the path prefix
                 // Traefik strips the prefix from incoming requests, but WordPress needs
                 // to generate URLs WITH the prefix. This prevents redirect loops.
-                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+                // CRITICAL: Cookie paths MUST be defined in wp-config.php (not mu-plugins)
+                // because WordPress processes cookie constants BEFORE loading mu-plugins.
+                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('COOKIEPATH', '/${subdomain}/'); define('SITECOOKIEPATH', '/${subdomain}/'); define('ADMIN_COOKIE_PATH', '/${subdomain}/wp-admin'); define('PLUGINS_COOKIE_PATH', '/${subdomain}/wp-content/plugins'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
                 // S3/MinIO configuration for WP Offload Media plugin
                 `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
                 `S3_UPLOADS_BUCKET=${minioBucket}`,
@@ -121,6 +123,12 @@ export class WordPressService {
                 [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: "80",
                 [`traefik.http.services.${serviceName}.loadbalancer.passHostHeader`]:
                     "true",
+                // CRITICAL: Sticky sessions for login to work with multiple replicas
+                // Without this, session stored on replica 1 won't be found on replica 2
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.name`]: `wp_sticky_${subdomain}`,
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.httpOnly`]: "true",
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.secure`]: "false",
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.sameSite`]: "lax",
                 // Health check at root (after prefix is stripped)
                 [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]:
                     "/",

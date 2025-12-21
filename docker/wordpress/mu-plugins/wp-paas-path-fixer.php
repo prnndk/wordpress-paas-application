@@ -2,11 +2,12 @@
 /**
  * Plugin Name: WP PaaS Path Fixer
  * Description: Fixes path handling for WordPress behind Traefik with path stripping
- * Version: 5.0.0
+ * Version: 6.0.0
  * 
  * This plugin:
  * 1. Overrides $_SERVER variables so WordPress knows it's at a subpath
- * 2. Disables canonical redirects that can cause loops
+ * 2. Fixes cookie paths to prevent login redirect loops
+ * 3. Disables canonical redirects that can cause loops
  * 
  * Works with Traefik StripPrefix middleware
  */
@@ -44,9 +45,47 @@ if (!empty($wp_paas_path_prefix)) {
         $_SERVER['PATH_INFO'] = $prefix . $_SERVER['PATH_INFO'];
     }
 
+    // ===========================================================================
+    // CRITICAL FIX: Set cookie paths BEFORE WordPress defines them
+    // This prevents login redirect loops when using path-based routing
+    // 
+    // Without this, WordPress sets cookies with path '/' but browser accesses
+    // via '/subdomain/' causing cookie mismatch and authentication failures.
+    // ===========================================================================
+
+    // Cookie paths must include the prefix for the browser to send them correctly
+    if (!defined('COOKIEPATH')) {
+        define('COOKIEPATH', $prefix . '/');
+    }
+    if (!defined('SITECOOKIEPATH')) {
+        define('SITECOOKIEPATH', $prefix . '/');
+    }
+    if (!defined('ADMIN_COOKIE_PATH')) {
+        define('ADMIN_COOKIE_PATH', $prefix . '/wp-admin');
+    }
+    if (!defined('PLUGINS_COOKIE_PATH')) {
+        define('PLUGINS_COOKIE_PATH', $prefix . '/wp-content/plugins');
+    }
+
     // Disable canonical redirects - WordPress tries to redirect to "correct" URL
     // This causes infinite redirects when behind reverse proxy
     add_filter('redirect_canonical', '__return_false');
+
+    // Fix login redirect URL to include prefix
+    add_filter('login_redirect', function ($redirect_to, $requested_redirect_to, $user) use ($prefix) {
+        // If redirect_to doesn't have the prefix, add it
+        if (!empty($redirect_to) && strpos($redirect_to, $prefix) === false) {
+            $parsed = parse_url($redirect_to);
+            if (isset($parsed['path'])) {
+                $scheme = isset($parsed['scheme']) ? $parsed['scheme'] . '://' : '';
+                $host = isset($parsed['host']) ? $parsed['host'] : '';
+                $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+                $query = isset($parsed['query']) ? '?' . $parsed['query'] : '';
+                $redirect_to = $scheme . $host . $port . $prefix . $parsed['path'] . $query;
+            }
+        }
+        return $redirect_to;
+    }, 10, 3);
 
     // Also disable HTTPS redirect if not using SSL
     if (!is_ssl()) {
@@ -66,4 +105,20 @@ if (!empty($wp_paas_path_prefix)) {
             return $location;
         }, 1);
     }
+
+    // Fix logout URL to include prefix
+    add_filter('logout_url', function ($logout_url, $redirect) use ($prefix) {
+        if (strpos($logout_url, $prefix) === false) {
+            $parsed = parse_url($logout_url);
+            if (isset($parsed['path'])) {
+                $scheme = isset($parsed['scheme']) ? $parsed['scheme'] . '://' : '';
+                $host = isset($parsed['host']) ? $parsed['host'] : '';
+                $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+                $query = isset($parsed['query']) ? '?' . $parsed['query'] : '';
+                $logout_url = $scheme . $host . $port . $prefix . $parsed['path'] . $query;
+            }
+        }
+        return $logout_url;
+    }, 10, 2);
 }
+
