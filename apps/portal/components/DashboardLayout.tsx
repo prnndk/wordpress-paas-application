@@ -529,29 +529,10 @@ export const DashboardLayout: React.FC = () => {
 							</Link>
 						</div>
 
-						{/* Collapse Toggle - Moved Below Logo */}
-						<div
-							className={`hidden md:flex items-center shrink-0 py-2 border-b border-slate-100 transition-all ${
-								isSidebarCollapsed ? "justify-center" : "justify-end px-4"
-							}`}>
-							<button
-								onClick={toggleSidebar}
-								className='p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors'
-								title={
-									isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"
-								}>
-								{isSidebarCollapsed ? (
-									<PanelLeftOpen className='w-5 h-5' />
-								) : (
-									<PanelLeftClose className='w-5 h-5' />
-								)}
-							</button>
-						</div>
-
 						{/* Nav Items */}
-						<div className='flex-1 flex flex-col overflow-y-auto overflow-x-hidden pt-6 px-3 space-y-6'>
+						<div className='flex-1 flex flex-col overflow-y-auto overflow-x-hidden pt-4 px-3 space-y-4'>
 							{/* New Instance Button */}
-							<div className='mb-2'>
+							<div className=''>
 								<button
 									onClick={() => setCreateModalOpen(true)}
 									className={`w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 rounded-lg transition-all shadow-sm ${
@@ -578,7 +559,7 @@ export const DashboardLayout: React.FC = () => {
 											</p>
 										)}
 										{isSidebarCollapsed && group.label && (
-											<div className='h-4'></div>
+											<div className='bg-slate-100 h-px my-2 mx-2'></div>
 										)}
 										{group.items.map((item) => renderNavItem(item))}
 									</div>
@@ -586,30 +567,48 @@ export const DashboardLayout: React.FC = () => {
 							})}
 						</div>
 
-						{/* User Footer */}
-						<div className='flex-shrink-0 border-t border-slate-200 p-3'>
+						{/* Footer Actions: Collapse Toggle & User */}
+						<div className='flex-shrink-0 border-t border-slate-200 p-3 space-y-2'>
+							{/* Collapse Toggle */}
+							<button
+								onClick={toggleSidebar}
+								className={`w-full flex items-center rounded-lg text-slate-500 hover:bg-slate-50 hover:text-indigo-600 transition-colors p-2 ${
+									isSidebarCollapsed ? "justify-center" : "gap-3"
+								}`}
+								title={
+									isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"
+								}>
+								{isSidebarCollapsed ? (
+									<PanelLeftOpen className='w-5 h-5' />
+								) : (
+									<PanelLeftClose className='w-5 h-5' />
+								)}
+								{!isSidebarCollapsed && (
+									<span className='text-sm font-medium'>Collapse Sidebar</span>
+								)}
+							</button>
+
+							{/* User Profile */}
 							<div
 								className={`flex items-center rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${
-									isSidebarCollapsed ? "justify-center p-2" : "p-2"
+									isSidebarCollapsed ? "justify-center p-2" : "p-2 gap-3"
 								}`}
 								onClick={(e) => {
 									e.stopPropagation();
 									setIsProfileOpen(!isProfileOpen);
 								}}>
 								<div className='relative flex-shrink-0'>
-									<div className='h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200 uppercase overflow-hidden'>
-										{user?.avatarUrl ? (
-											<img
-												src={user.avatarUrl}
-												alt={user.name}
-												className='w-full h-full object-cover'
-											/>
-										) : user?.name ? (
-											user.name.substring(0, 2)
-										) : (
-											"GU"
-										)}
-									</div>
+									{user?.avatarUrl ? (
+										<img
+											src={user.avatarUrl}
+											alt={`${user.name}'s avatar`}
+											className='h-9 w-9 rounded-full object-cover border border-slate-200'
+										/>
+									) : (
+										<div className='h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200 uppercase overflow-hidden'>
+											{user?.name ? user.name.substring(0, 2) : "GU"}
+										</div>
+									)}
 									<div className='absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-white'></div>
 								</div>
 
