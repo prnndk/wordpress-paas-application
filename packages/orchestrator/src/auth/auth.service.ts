@@ -191,6 +191,9 @@ export class AuthService {
 	/**
 	 * Get full user profile with optional aggregated data
 	 */
+	/**
+	 * Get full user profile with optional aggregated data
+	 */
 	async getFullUserProfile(
 		userId: string,
 		includes: Set<IncludeOption>
@@ -201,7 +204,7 @@ export class AuthService {
 			throw new UnauthorizedException("User not found");
 		}
 
-		// Build response
+		// Build base response
 		const response: MeResponseDto = {
 			user: {
 				id: user.id,
@@ -217,130 +220,150 @@ export class AuthService {
 			},
 		};
 
+		const tasks: Promise<void>[] = [];
+
 		// Fetch tenants if requested
 		if (includes.has("tenants")) {
-			try {
-				// Always fetch only user's own tenants
-				// Admin can use /admin/tenants endpoint for all tenants
-				const tenantDetails = await this.tenantsService.getTenantsByUser(
-					userId
-				);
+			tasks.push(
+				(async () => {
+					try {
+						// Always fetch only user's own tenants
+						// Admin can use /admin/tenants endpoint for all tenants
+						const tenantDetails = await this.tenantsService.getTenantsByUser(
+							userId
+						);
 
-				// Convert to TenantSummaryDto (limit to 10)
-				response.tenants = tenantDetails.slice(0, 10).map((t) => ({
-					id: t.id,
-					name: t.name,
-					slug: t.slug,
-					status: t.status,
-					specs: {
-						cpuCores: t.specs?.cpuCores || 1,
-						ramGb: t.specs?.ramGb || 2,
-						diskGb: t.specs?.storageGb || 10,
-					},
-					planId: t.planId,
-					createdAt: t.createdAt?.toISOString() || new Date().toISOString(),
-					endpoints: t.endpoints || {
-						admin: "#",
-						site: "#",
-					},
-				}));
-			} catch (error) {
-				response.tenants = [];
-			}
+						// Convert to TenantSummaryDto (limit to 10)
+						response.tenants = tenantDetails.slice(0, 10).map((t) => ({
+							id: t.id,
+							name: t.name,
+							slug: t.slug,
+							status: t.status,
+							specs: {
+								cpuCores: t.specs?.cpuCores || 1,
+								ramGb: t.specs?.ramGb || 2,
+								diskGb: t.specs?.storageGb || 10,
+							},
+							planId: t.planId,
+							createdAt: t.createdAt?.toISOString() || new Date().toISOString(),
+							endpoints: t.endpoints || {
+								admin: "#",
+								site: "#",
+							},
+						}));
+					} catch (error) {
+						response.tenants = [];
+					}
+				})()
+			);
 		}
 
 		// Fetch subscription if requested
 		if (includes.has("subscriptions")) {
-			try {
-				const currentSub = await this.subscriptionsService.getUserSubscription(
-					userId
-				);
-				const plans = this.subscriptionsService.getAvailablePlans();
+			tasks.push(
+				(async () => {
+					try {
+						const currentSub =
+							await this.subscriptionsService.getUserSubscription(userId);
+						const plans = this.subscriptionsService.getAvailablePlans();
 
-				if (currentSub) {
-					response.subscriptions = {
-						current: {
-							id: currentSub.id,
-							planId: currentSub.planId,
-							planName: currentSub.planName,
-							price: currentSub.price,
-							currency: currentSub.currency,
-							startedAt: currentSub.startedAt,
-							expiresAt: currentSub.expiresAt,
-							status: currentSub.status,
-							limits: currentSub.limits,
-						},
-						availablePlans: plans.map((p) => ({
-							id: p.id,
-							name: p.name,
-							price: p.price,
-							features: p.features,
-						})),
-					};
-				}
-			} catch (error) {
-				// Skip subscriptions on error
-			}
+						if (currentSub) {
+							response.subscriptions = {
+								current: {
+									id: currentSub.id,
+									planId: currentSub.planId,
+									planName: currentSub.planName,
+									price: currentSub.price,
+									currency: currentSub.currency,
+									startedAt: currentSub.startedAt,
+									expiresAt: currentSub.expiresAt,
+									status: currentSub.status,
+									limits: currentSub.limits,
+								},
+								availablePlans: plans.map((p) => ({
+									id: p.id,
+									name: p.name,
+									price: p.price,
+									features: p.features,
+								})),
+							};
+						}
+					} catch (error) {
+						// Skip subscriptions on error
+					}
+				})()
+			);
 		}
 
 		// Fetch cluster health if requested
 		if (includes.has("cluster")) {
-			try {
-				const clusterHealth = await this.clusterService.getClusterHealth();
+			tasks.push(
+				(async () => {
+					try {
+						const clusterHealth = await this.clusterService.getClusterHealth();
 
-				response.cluster = {
-					swarmStatus: clusterHealth.swarmStatus,
-					totalNodes: clusterHealth.totalNodes,
-					onlineNodes: clusterHealth.totalNodes, // Assume all online for now
-					totalCpuCores: clusterHealth.totalCpuCores,
-					totalRamGb: clusterHealth.totalRamGb,
-					runningServices: clusterHealth.runningServices,
-					metricsUpdatedAt: new Date().toISOString(),
-				};
-			} catch (error) {
-				response.cluster = {
-					swarmStatus: "unknown",
-					totalNodes: 0,
-				};
-			}
+						response.cluster = {
+							swarmStatus: clusterHealth.swarmStatus,
+							totalNodes: clusterHealth.totalNodes,
+							onlineNodes: clusterHealth.totalNodes, // Assume all online for now
+							totalCpuCores: clusterHealth.totalCpuCores,
+							totalRamGb: clusterHealth.totalRamGb,
+							runningServices: clusterHealth.runningServices,
+							metricsUpdatedAt: new Date().toISOString(),
+						};
+					} catch (error) {
+						response.cluster = {
+							swarmStatus: "unknown",
+							totalNodes: 0,
+						};
+					}
+				})()
+			);
 		}
 
 		// Fetch audit summary if requested
 		if (includes.has("audit")) {
-			try {
-				const auditLogs = await this.auditService.getAuditLogs({
-					userId,
-					limit: 10,
-				});
+			tasks.push(
+				(async () => {
+					try {
+						const auditLogs = await this.auditService.getAuditLogs({
+							userId,
+							limit: 10,
+						});
 
-				// Count by level
-				const counts = { info: 0, warn: 0, error: 0 };
-				auditLogs.forEach((log) => {
-					if (log.level === "info") counts.info++;
-					else if (log.level === "warn") counts.warn++;
-					else if (log.level === "error") counts.error++;
-				});
+						// Count by level
+						const counts = { info: 0, warn: 0, error: 0 };
+						auditLogs.forEach((log) => {
+							if (log.level === "info") counts.info++;
+							else if (log.level === "warn") counts.warn++;
+							else if (log.level === "error") counts.error++;
+						});
 
-				response.auditSummary = {
-					recent: auditLogs.map((log) => ({
-						id: log.id,
-						timestamp: log.timestamp,
-						level: log.level,
-						source: log.source,
-						message: log.message,
-						tenantId: log.tenantId,
-					})),
-					counts,
-				};
-			} catch (error) {
-				response.auditSummary = {
-					recent: [],
-					counts: { info: 0, warn: 0, error: 0 },
-				};
-			}
+						response.auditSummary = {
+							recent: auditLogs.map((log) => ({
+								id: log.id,
+								timestamp: log.timestamp,
+								level: log.level,
+								source: log.source,
+								message: log.message,
+								tenantId: log.tenantId,
+							})),
+							counts,
+						};
+					} catch (error) {
+						response.auditSummary = {
+							recent: [],
+							counts: { info: 0, warn: 0, error: 0 },
+						};
+					}
+				})()
+			);
 		}
 
-		// Fetch billing if requested
+		// Wait for all async tasks to complete
+		await Promise.all(tasks);
+
+		// Fetch billing if requested (sync mock)
 		if (includes.has("billing")) {
 			// Mock billing info for now until calculateBilling is implemented
 			response.billing = {
