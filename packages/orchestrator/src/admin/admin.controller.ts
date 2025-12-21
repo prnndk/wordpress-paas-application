@@ -4,11 +4,12 @@ import {
     Patch,
     Param,
     Body,
+    Query,
     UseGuards,
     HttpCode,
     HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { IsBoolean, IsString, IsIn } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from './admin.guard';
@@ -94,5 +95,16 @@ export class AdminController {
     @ApiOperation({ summary: 'List all Docker services with node info' })
     async getAllServices() {
         return this.adminService.getAllServices();
+    }
+
+    @Get('services/:name/logs')
+    @ApiOperation({ summary: 'Get logs for a specific Docker service' })
+    @ApiQuery({ name: 'tail', required: false, description: 'Number of log lines to return' })
+    async getServiceLogs(
+        @Param('name') name: string,
+        @Query('tail') tail?: string,
+    ) {
+        const logs = await this.adminService.getServiceLogs(name, tail ? parseInt(tail, 10) : 100);
+        return { logs };
     }
 }

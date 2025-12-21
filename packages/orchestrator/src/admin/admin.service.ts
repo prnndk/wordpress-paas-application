@@ -266,6 +266,20 @@ export class AdminService {
 		return this.dockerService.listAllServicesWithTasks();
 	}
 
+	async getServiceLogs(serviceName: string, tail: number = 100): Promise<string[]> {
+		this.logger.log(`Fetching logs for service: ${serviceName}, tail: ${tail}`);
+		try {
+			const logs = await this.dockerService.getServiceLogs(serviceName, { tail });
+			const lines = logs.split("\n").filter((line) => line.trim().length > 0);
+			this.logger.log(`Successfully fetched ${lines.length} log lines for ${serviceName}`);
+			return lines;
+		} catch (error: any) {
+			this.logger.error(`Failed to get logs for service ${serviceName}: ${error.message || error}`);
+			// Return error message as log line for debugging
+			return [`[Error] Failed to fetch logs: ${error.message || 'Unknown error'}`];
+		}
+	}
+
 	private formatBytes(bytes: number): string {
 		if (bytes === 0) return "0 B";
 		const k = 1024;

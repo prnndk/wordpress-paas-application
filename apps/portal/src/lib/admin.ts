@@ -137,6 +137,30 @@ export interface ServiceTask {
 	createdAt: string;
 	updatedAt: string;
 	error?: string;
+	containerStatus?: {
+		containerId?: string;
+		pid?: number;
+		exitCode?: number;
+	};
+}
+
+export interface EnvVar {
+	key: string;
+	value: string;
+	masked?: boolean;
+}
+
+export interface Mount {
+	source: string;
+	target: string;
+	type: string;
+}
+
+export interface ServiceResources {
+	cpuLimit?: number;
+	memoryLimit?: number;
+	cpuReservation?: number;
+	memoryReservation?: number;
 }
 
 export interface DockerService {
@@ -148,6 +172,10 @@ export interface DockerService {
 	createdAt: string;
 	updatedAt: string;
 	labels: Record<string, string>;
+	env?: EnvVar[];
+	mounts?: Mount[];
+	networks?: string[];
+	resources?: ServiceResources;
 	tasks: ServiceTask[];
 }
 
@@ -179,6 +207,12 @@ export const adminService = {
 	 * Get all Docker services with node info
 	 */
 	getAllServices: () => api.get<ServicesResponse>("/admin/services"),
+
+	/**
+	 * Get logs for a specific Docker service
+	 */
+	getServiceLogs: (serviceName: string, tail: number = 100) =>
+		api.get<{ logs: string[] }>(`/admin/services/${encodeURIComponent(serviceName)}/logs?tail=${tail}`),
 
 	// -------- User Management --------
 	/**

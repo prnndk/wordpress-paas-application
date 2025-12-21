@@ -80,6 +80,39 @@ export default function InstanceDetailPage() {
     const [logs, setLogs] = useState<string>('');
     const [logsLoading, setLogsLoading] = useState(false);
     const [showLogs, setShowLogs] = useState(false);
+    const [containerInspect, setContainerInspect] = useState<{
+        id: string;
+        name: string;
+        image: string;
+        replicas: number;
+        runningReplicas: number;
+        createdAt: string;
+        updatedAt: string;
+        env: { key: string; value: string; masked?: boolean }[];
+        mounts: { source: string; target: string; type: string }[];
+        networks: string[];
+        labels: Record<string, string>;
+        resources: {
+            cpuLimit?: number;
+            memoryLimit?: number;
+            cpuReservation?: number;
+            memoryReservation?: number;
+        };
+        tasks: {
+            id: string;
+            nodeId: string;
+            state: string;
+            desiredState: string;
+            error?: string;
+            containerStatus?: {
+                containerId?: string;
+                pid?: number;
+                exitCode?: number;
+            };
+        }[];
+    } | null>(null);
+    const [inspectLoading, setInspectLoading] = useState(false);
+    const [showInspect, setShowInspect] = useState(false);
 
     const instanceId = params.id as string;
 
@@ -185,6 +218,46 @@ export default function InstanceDetailPage() {
             fetchLogs();
         }
         setShowLogs(!showLogs);
+    };
+
+    const fetchContainerInspect = async () => {
+        if (!instanceId) return;
+        setInspectLoading(true);
+        const token = localStorage.getItem('accessToken');
+        try {
+            const res = await fetch(`/api/v1/tenants/${instanceId}/inspect`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setContainerInspect(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch container inspect:', error);
+        } finally {
+            setInspectLoading(false);
+        }
+    };
+
+    const handleToggleInspect = () => {
+        if (!showInspect) {
+            fetchContainerInspect();
+        }
+        setShowInspect(!showInspect);
+    };
+
+    const formatBytes = (bytes?: number) => {
+        if (!bytes) return 'N/A';
+        const mb = bytes / (1024 * 1024);
+        if (mb >= 1024) {
+            return `${(mb / 1024).toFixed(2)} GB`;
+        }
+        return `${mb.toFixed(0)} MB`;
+    };
+
+    const formatNanoCPU = (nanoCpu?: number) => {
+        if (!nanoCpu) return 'N/A';
+        return `${(nanoCpu / 1e9).toFixed(2)} CPU`;
     };
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'delete') => {
@@ -556,6 +629,195 @@ export default function InstanceDetailPage() {
                                     {logs || 'No logs available'}
                                 </pre>
                             </>
+                        )}
+                    </CardContent>
+                )}
+            </Card>
+
+            {/* Container Inspect Section */}
+            <Card className="glass gradient-border">
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                            <Database className="w-5 h-5 text-primary" />
+                            Container Details
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleToggleInspect}
+                        >
+                            {showInspect ? 'Hide Details' : 'Show Details'}
+                        </Button>
+                    </CardTitle>
+                </CardHeader>
+                {showInspect && (
+                    <CardContent>
+                        {inspectLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                            </div>
+                        ) : containerInspect ? (
+                            <div className="space-y-6">
+                                {/* Environment Variables */}
+                                <div>
+                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                        <Server className="w-4 h-4" />
+                                        Environment Variables
+                                    </h4>
+                                    <div className="bg-black/80 rounded-lg p-4 max-h-64 overflow-y-auto">
+                                        <table className="w-full text-xs font-mono">
+                                            <thead>
+                                                <tr className="text-muted-foreground border-b border-gray-700">
+                                                    <th className="text-left py-2 px-2">Key</th>
+                                                    <th className="text-left py-2 px-2">Value</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {containerInspect.env.map((env, idx) => (
+                                                    <tr key={idx} className="border-b border-gray-800">
+                                                        <td className="py-2 px-2 text-cyan-400">{env.key}</td>
+                                                        <td className={cn(
+                                                            "py-2 px-2",
+                                                            env.masked ? "text-yellow-500 italic" : "text-green-400"
+                                                        )}>
+                                                            {env.value}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Volume Mounts */}
+                                <div>
+                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                        <HardDrive className="w-4 h-4" />
+                                        Volume Mounts
+                                    </h4>
+                                    <div className="grid gap-2">
+                                        {containerInspect.mounts.map((mount, idx) => (
+                                            <div key={idx} className="p-3 rounded-lg bg-card/50 border text-sm">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400">
+                                                        {mount.type}
+                                                    </span>
+                                                </div>
+                                                <div className="font-mono text-xs">
+                                                    <span className="text-muted-foreground">Source:</span>{' '}
+                                                    <span className="text-green-400">{mount.source || 'N/A'}</span>
+                                                </div>
+                                                <div className="font-mono text-xs">
+                                                    <span className="text-muted-foreground">Target:</span>{' '}
+                                                    <span className="text-cyan-400">{mount.target}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Resources */}
+                                <div>
+                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                        <Cpu className="w-4 h-4" />
+                                        Resource Limits
+                                    </h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <div className="p-3 rounded-lg bg-card/50 border">
+                                            <div className="text-xs text-muted-foreground mb-1">CPU Limit</div>
+                                            <div className="font-semibold">{formatNanoCPU(containerInspect.resources.cpuLimit)}</div>
+                                        </div>
+                                        <div className="p-3 rounded-lg bg-card/50 border">
+                                            <div className="text-xs text-muted-foreground mb-1">CPU Reserved</div>
+                                            <div className="font-semibold">{formatNanoCPU(containerInspect.resources.cpuReservation)}</div>
+                                        </div>
+                                        <div className="p-3 rounded-lg bg-card/50 border">
+                                            <div className="text-xs text-muted-foreground mb-1">Memory Limit</div>
+                                            <div className="font-semibold">{formatBytes(containerInspect.resources.memoryLimit)}</div>
+                                        </div>
+                                        <div className="p-3 rounded-lg bg-card/50 border">
+                                            <div className="text-xs text-muted-foreground mb-1">Memory Reserved</div>
+                                            <div className="font-semibold">{formatBytes(containerInspect.resources.memoryReservation)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Networks */}
+                                <div>
+                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                        <Network className="w-4 h-4" />
+                                        Networks
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {containerInspect.networks.map((network, idx) => (
+                                            <span key={idx} className="px-3 py-1 rounded-full text-sm bg-purple-500/20 text-purple-400 font-mono">
+                                                {network}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Tasks */}
+                                <div>
+                                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                                        <Activity className="w-4 h-4" />
+                                        Tasks ({containerInspect.tasks.length})
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {containerInspect.tasks.map((task, idx) => (
+                                            <div key={idx} className="p-3 rounded-lg bg-card/50 border">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="font-mono text-xs text-muted-foreground">
+                                                        {task.id.substring(0, 12)}...
+                                                    </span>
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded-full text-xs",
+                                                        task.state === 'running' ? 'bg-green-500/20 text-green-400' :
+                                                            task.state === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                                                'bg-yellow-500/20 text-yellow-400'
+                                                    )}>
+                                                        {task.state}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs space-y-1">
+                                                    <div>
+                                                        <span className="text-muted-foreground">Node:</span>{' '}
+                                                        <span className="font-mono">{task.nodeId.substring(0, 12)}...</span>
+                                                    </div>
+                                                    {task.containerStatus?.containerId && (
+                                                        <div>
+                                                            <span className="text-muted-foreground">Container:</span>{' '}
+                                                            <span className="font-mono">{task.containerStatus.containerId.substring(0, 12)}...</span>
+                                                        </div>
+                                                    )}
+                                                    {task.error && (
+                                                        <div className="text-red-400">
+                                                            <span className="text-muted-foreground">Error:</span> {task.error}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Image Info */}
+                                <div className="p-4 rounded-lg bg-card/50 border">
+                                    <div className="text-sm">
+                                        <span className="text-muted-foreground">Image:</span>{' '}
+                                        <span className="font-mono text-xs">{containerInspect.image}</span>
+                                    </div>
+                                    <div className="text-sm mt-1">
+                                        <span className="text-muted-foreground">Service ID:</span>{' '}
+                                        <span className="font-mono text-xs">{containerInspect.id}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center text-muted-foreground py-4">
+                                No container details available
+                            </div>
                         )}
                     </CardContent>
                 )}
