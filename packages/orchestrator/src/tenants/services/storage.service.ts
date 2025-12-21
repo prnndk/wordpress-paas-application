@@ -10,8 +10,8 @@ export class StorageService {
 
     constructor(private configService: ConfigService) {
         this.basePath = this.configService.get<string>(
-            'GLUSTER_MOUNT_PATH',
-            '/mnt/glusterfs/tenants'
+            'STORAGE_PATH',
+            path.join(process.cwd(), 'data', 'tenants')
         );
     }
 
