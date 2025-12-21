@@ -34,9 +34,43 @@ export class MinioService {
             await this.client.listBuckets();
             this.isConnected = true;
             this.logger.log('Connected to MinIO');
+
+            // Ensure required buckets exist
+            await this.ensureBucketsExist();
         } catch (error) {
             this.logger.warn(`MinIO connection failed: ${error}`);
             this.isConnected = false;
+        }
+    }
+
+    private async ensureBucketsExist() {
+        const requiredBuckets = ['wp-uploads'];
+
+        for (const bucket of requiredBuckets) {
+            try {
+                const exists = await this.client.bucketExists(bucket);
+                if (!exists) {
+                    await this.client.makeBucket(bucket, 'us-east-1');
+                    this.logger.log(`Created bucket: ${bucket}`);
+
+                    // Set public read policy for wp-uploads
+                    if (bucket === 'wp-uploads') {
+                        const policy = {
+                            Version: '2012-10-17',
+                            Statement: [{
+                                Effect: 'Allow',
+                                Principal: { AWS: ['*'] },
+                                Action: ['s3:GetObject'],
+                                Resource: [`arn:aws:s3:::${bucket}/*`]
+                            }]
+                        };
+                        await this.client.setBucketPolicy(bucket, JSON.stringify(policy));
+                        this.logger.log(`Set public read policy for bucket: ${bucket}`);
+                    }
+                }
+            } catch (error) {
+                this.logger.warn(`Failed to ensure bucket ${bucket} exists: ${error}`);
+            }
         }
     }
 

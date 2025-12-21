@@ -34,7 +34,9 @@ RUN mkdir -p /opt/s3-uploads \
 
 # Copy custom entrypoint script
 COPY docker-entrypoint-custom.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint-custom.sh
+# Convert Windows CRLF to Unix LF (fixes "no such file or directory" error)
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint-custom.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint-custom.sh
 
 # Copy MinIO configuration script
 COPY configure-minio.php /usr/local/bin/

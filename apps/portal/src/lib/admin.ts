@@ -58,6 +58,30 @@ export interface CurrentImageInfo {
 	currentImage: string;
 }
 
+export interface AdminTenant {
+	id: string;
+	name: string;
+	subdomain: string;
+	dbName?: string;
+	status: string;
+	isActive: boolean;
+	planId: string;
+	replicas: number;
+	createdAt: string;
+	updatedAt: string;
+	user?: {
+		id: string;
+		email: string;
+		name: string | null;
+	};
+	docker?: {
+		serviceId: string;
+		desiredReplicas: number;
+		runningReplicas: number;
+		image: string;
+	};
+}
+
 // ============ Admin Service ============
 
 export const adminService = {
@@ -122,4 +146,24 @@ export const adminService = {
 	 * Delete announcement
 	 */
 	deleteAnnouncement: (id: string) => api.delete(`/admin/announcements/${id}`),
+
+	// -------- Tenant Management --------
+	/**
+	 * Get all tenants (admin)
+	 */
+	getAllTenants: () => api.get<AdminTenant[]>("/admin/tenants"),
+
+	/**
+	 * Get single tenant details (admin)
+	 */
+	getTenant: (tenantId: string) =>
+		api.get<AdminTenant>(`/admin/tenants/${tenantId}`),
+
+	/**
+	 * Scale tenant replicas
+	 */
+	scaleTenant: (tenantId: string, replicas: number) =>
+		api.post<{ success: boolean; replicas: number }>(`/tenants/${tenantId}/scale`, {
+			replicas,
+		}),
 };

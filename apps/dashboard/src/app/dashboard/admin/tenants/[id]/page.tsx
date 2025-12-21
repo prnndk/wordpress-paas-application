@@ -22,6 +22,8 @@ import {
     HardDrive,
     Cpu,
     MemoryStick,
+    Plus,
+    Minus,
 } from 'lucide-react';
 
 interface TenantDetails {
@@ -76,6 +78,7 @@ export default function AdminTenantDetailPage() {
     const [tenant, setTenant] = useState<TenantDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [toggling, setToggling] = useState(false);
+    const [scaling, setScaling] = useState(false);
 
     const fetchTenant = async () => {
         const token = localStorage.getItem('accessToken');
@@ -122,6 +125,41 @@ export default function AdminTenantDetailPage() {
             console.error('Failed to toggle status:', error);
         } finally {
             setToggling(false);
+        }
+    };
+
+    const scaleReplicas = async (newReplicas: number) => {
+        if (!tenant || scaling) return;
+        if (newReplicas < 0 || newReplicas > 10) return;
+
+        setScaling(true);
+        const token = localStorage.getItem('accessToken');
+
+        try {
+            const res = await fetch(`/api/v1/tenants/${tenant.id}/scale`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ replicas: newReplicas }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setTenant({
+                    ...tenant,
+                    replicas: data.replicas,
+                    docker: {
+                        ...tenant.docker,
+                        desiredReplicas: data.replicas,
+                    },
+                });
+            }
+        } catch (error) {
+            console.error('Failed to scale replicas:', error);
+        } finally {
+            setScaling(false);
         }
     };
 
@@ -220,13 +258,35 @@ export default function AdminTenantDetailPage() {
                 </Card>
                 <Card>
                     <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                            <Server className="w-8 h-8 text-blue-500" />
-                            <div>
-                                <p className="text-sm text-muted-foreground">Replicas</p>
-                                <p className="text-xl font-bold">
-                                    {tenant.docker.runningReplicas}/{tenant.docker.desiredReplicas}
-                                </p>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Server className="w-8 h-8 text-blue-500" />
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Replicas</p>
+                                    <p className="text-xl font-bold">
+                                        {tenant.docker.runningReplicas}/{tenant.docker.desiredReplicas}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => scaleReplicas(tenant.docker.desiredReplicas - 1)}
+                                    disabled={scaling || tenant.docker.desiredReplicas <= 0}
+                                >
+                                    {scaling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Minus className="h-4 w-4" />}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => scaleReplicas(tenant.docker.desiredReplicas + 1)}
+                                    disabled={scaling || tenant.docker.desiredReplicas >= 10}
+                                >
+                                    {scaling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                                </Button>
                             </div>
                         </div>
                     </CardContent>

@@ -4,7 +4,7 @@ set -euo pipefail
 # Function to configure WordPress after it's ready
 configure_wordpress() {
     echo "Waiting for WordPress to be ready..."
-    sleep 15
+    sleep 5
 
     # Wait for database connection
     echo "Checking database connection..."
@@ -29,13 +29,16 @@ configure_wordpress() {
     echo "wp-config.php found!"
 
     # CRITICAL: Copy mu-plugins for path-based routing fix
-    # This must happen after volume is mounted but before WordPress is used
+    # This MUST happen on EVERY replica, EVERY time - always overwrite to ensure consistency
     if [ -d /opt/wp-paas-mu-plugins ]; then
-        echo "Installing WP-PaaS must-use plugins..."
+        echo "Installing WP-PaaS must-use plugins (forced copy)..."
         mkdir -p /var/www/html/wp-content/mu-plugins
-        cp -r /opt/wp-paas-mu-plugins/* /var/www/html/wp-content/mu-plugins/
+        # Force copy with -f to overwrite existing files
+        cp -rf /opt/wp-paas-mu-plugins/* /var/www/html/wp-content/mu-plugins/
         chown -R www-data:www-data /var/www/html/wp-content/mu-plugins/
-        echo "mu-plugins installed!"
+        echo "mu-plugins installed: $(ls -la /var/www/html/wp-content/mu-plugins/)"
+    else
+        echo "WARNING: /opt/wp-paas-mu-plugins not found! Path-based routing will NOT work."
     fi
 
     # Check if WordPress is already installed
@@ -46,13 +49,12 @@ configure_wordpress() {
         # Set default values if not provided
         WP_TITLE="${WORDPRESS_TITLE:-My WordPress Site}"
         WP_ADMIN_USER="${WORDPRESS_ADMIN_USER:-admin}"
-        WP_ADMIN_PASSWORD="${WORDPRESS_ADMIN_PASSWORD:-$(openssl rand -base64 12)}"
+        WP_ADMIN_PASSWORD="${WORDPRESS_ADMIN_PASSWORD:-changeme123}"
         WP_ADMIN_EMAIL="${WORDPRESS_ADMIN_EMAIL:-admin@localhost.local}"
         
-        # Determine site URL
-        if [ -n "${WP_HOME:-}" ]; then
-            WP_URL="${WP_HOME}"
-        elif [ -n "${WORDPRESS_CONFIG_EXTRA:-}" ]; then
+        # For WP CLI install, use base URL without path prefix
+        # The mu-plugin will add the prefix to generated URLs
+        if [ -n "${WORDPRESS_CONFIG_EXTRA:-}" ]; then
             WP_URL=$(echo "${WORDPRESS_CONFIG_EXTRA}" | grep -oP "define\('WP_HOME',\s*'[^']+" | grep -oP "'[^']+" | tail -1 | tr -d "'")
         fi
         
@@ -64,7 +66,10 @@ configure_wordpress() {
         echo "  URL: ${WP_URL}"
         echo "  Title: ${WP_TITLE}"
         echo "  Admin User: ${WP_ADMIN_USER}"
+        echo "  Admin Password: ${WP_ADMIN_PASSWORD}"
+        echo "  Path Prefix: ${WP_PAAS_PATH_PREFIX:-none}"
         
+        # Install WordPress with user-provided credentials
         wp core install \
             --url="${WP_URL}" \
             --title="${WP_TITLE}" \
@@ -75,9 +80,11 @@ configure_wordpress() {
             --allow-root
         
         echo "WordPress installation complete!"
+        echo "=========================================="
         echo "Admin credentials:"
         echo "  Username: ${WP_ADMIN_USER}"
         echo "  Password: ${WP_ADMIN_PASSWORD}"
+        echo "=========================================="
         
         wp rewrite structure '/%postname%/' --hard --allow-root 2>/dev/null || true
         wp option update timezone_string 'UTC' --allow-root 2>/dev/null || true
@@ -87,25 +94,18 @@ configure_wordpress() {
         
         echo "WordPress configuration complete!"
     else
-        echo "WordPress is already installed. Skipping auto-install."
-    fi
-
-    # Sync WordPress URLs
-    if [ -n "${WP_HOME:-}" ]; then
-        WP_URL="${WP_HOME}"
-    elif [ -n "${WORDPRESS_CONFIG_EXTRA:-}" ]; then
-        WP_URL=$(echo "${WORDPRESS_CONFIG_EXTRA}" | grep -oP "define\('WP_HOME',\s*'[^']+" | grep -oP "'[^']+" | tail -1 | tr -d "'")
-    fi
-
-    if [ -n "${WP_URL:-}" ]; then
-        echo "Syncing WordPress URL to: ${WP_URL}"
-        CURRENT_HOME=$(wp option get home --allow-root 2>/dev/null || echo "")
+        echo "WordPress is already installed. Syncing admin credentials..."
         
-        if [ "${CURRENT_HOME}" != "${WP_URL}" ]; then
-            wp option update home "${WP_URL}" --allow-root 2>/dev/null || true
-            wp option update siteurl "${WP_URL}" --allow-root 2>/dev/null || true
-            wp rewrite flush --hard --allow-root 2>/dev/null || true
-            echo "URLs updated!"
+        # Sync admin password from environment variable
+        WP_ADMIN_USER="${WORDPRESS_ADMIN_USER:-admin}"
+        WP_ADMIN_PASSWORD="${WORDPRESS_ADMIN_PASSWORD:-changeme123}"
+        
+        # Update password if provided
+        if [ -n "${WP_ADMIN_PASSWORD}" ]; then
+            echo "Updating password for user: ${WP_ADMIN_USER}"
+            wp user update "${WP_ADMIN_USER}" --user_pass="${WP_ADMIN_PASSWORD}" --allow-root 2>/dev/null && \
+                echo "Password updated successfully!" || \
+                echo "Failed to update password (user may not exist)"
         fi
     fi
 
