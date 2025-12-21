@@ -22,12 +22,12 @@ export interface ServiceSpec {
 	}>;
 	healthCheck?: {
 		test: string[];
-		interval?: number; // nanoseconds
-		timeout?: number; // nanoseconds
+		interval?: number;
+		timeout?: number;
 		retries?: number;
-		startPeriod?: number; // nanoseconds
+		startPeriod?: number;
 	};
-	command?: string[]; // Optional override for entrypoint/command
+	command?: string[];
 }
 
 export interface ServiceInfo {
@@ -50,17 +50,14 @@ export class DockerService implements OnModuleInit {
 		const dockerHost = this.configService.get<string>("DOCKER_HOST");
 
 		if (dockerHost?.startsWith("tcp://")) {
-			// Remote Docker via TCP
 			const url = new URL(dockerHost);
 			this.docker = new Docker({
 				host: url.hostname,
 				port: parseInt(url.port, 10),
 			});
 		} else if (process.platform === "win32") {
-			// Windows: Use named pipe
 			this.docker = new Docker({ socketPath: "//./pipe/docker_engine" });
 		} else {
-			// Linux/Mac: Unix socket
 			this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
 		}
 	}
@@ -86,7 +83,6 @@ export class DockerService implements OnModuleInit {
 			this.logger.warn(
 				"To enable WordPress deployments, ensure Docker is running or set DOCKER_HOST in .env"
 			);
-			// Don't throw - allow the app to start without Docker for development
 			this.isConnected = false;
 		}
 	}
@@ -109,7 +105,7 @@ export class DockerService implements OnModuleInit {
 					Image: spec.image,
 					Env: spec.env,
 					Labels: spec.labels,
-					Command: spec.command, // Pass command if provided
+					Command: spec.command,
 					Mounts: spec.mounts.map((mount) => ({
 						Source: mount.source,
 						Target: mount.target,
@@ -117,7 +113,7 @@ export class DockerService implements OnModuleInit {
 					})),
 					HealthCheck: spec.healthCheck
 						? {
-								Test: spec.healthCheck.test, // Dockerode expects PascalCase 'Test'
+								Test: spec.healthCheck.test,
 								Interval: spec.healthCheck.interval,
 								Timeout: spec.healthCheck.timeout,
 								Retries: spec.healthCheck.retries,
@@ -129,20 +125,20 @@ export class DockerService implements OnModuleInit {
 					Constraints: spec.constraints || ["node.role == worker"],
 				},
 				Resources: {
-					Limits: { MemoryBytes: 536870912 }, // 512MB
-					Reservations: { MemoryBytes: 268435456 }, // 256MB
+					Limits: { MemoryBytes: 536870912 },
+					Reservations: { MemoryBytes: 268435456 },
 				},
 				RestartPolicy: {
 					Condition: "on-failure",
-					Delay: 5000000000, // 5 seconds in nanoseconds
+					Delay: 5000000000,
 					MaxAttempts: 3,
 				},
-				Networks: spec.networks.map((networkName) => ({ Target: networkName })), // Networks must be in TaskTemplate for Swarm
+				Networks: spec.networks.map((networkName) => ({ Target: networkName })),
 			},
 			Mode: {
 				Replicated: { Replicas: spec.replicas },
 			},
-			Labels: spec.labels, // Keep labels on service level too for filtering
+			Labels: spec.labels,
 			EndpointSpec: {
 				Mode: "vip",
 				Ports:
@@ -172,10 +168,7 @@ export class DockerService implements OnModuleInit {
 				(task) => task.Status?.State === "running"
 			);
 
-			// Debug: If no running tasks, log why the latest task failed
 			if (runningTasks.length === 0 && tasks.length > 0) {
-				// Find the most recent task that is NOT starting/preparing (i.e. one that actually failed/stopped)
-				// States: new, allocated, pending, assigned, accepted, preparing, starting, running, complete, shutdown, failed, rejected, remove, orphaned
 				const failedTasks = tasks.filter((t) =>
 					["complete", "failed", "shutdown", "rejected", "orphaned"].includes(
 						t.Status?.State || ""
@@ -204,8 +197,6 @@ export class DockerService implements OnModuleInit {
 						`Container exit code: ${targetTask.Status.ContainerStatus.ExitCode}`
 					);
 
-					// Fetch logs from the SERVICE instead of the ephemeral container
-					// This works better in Swarm as managers can aggregate logs
 					try {
 						const serviceLogs = await service.logs({
 							stdout: true,
@@ -277,12 +268,12 @@ export class DockerService implements OnModuleInit {
 		return result;
 	}
 
-    async updateService(
-        nameOrId: string,
-        updates: Partial<{ replicas: number; image: string; forceUpdate: boolean }>,
-    ): Promise<void> {
-        const service = this.docker.getService(nameOrId);
-        const info = await service.inspect();
+	async updateService(
+		nameOrId: string,
+		updates: Partial<{ replicas: number; image: string; forceUpdate: boolean }>
+	): Promise<void> {
+		const service = this.docker.getService(nameOrId);
+		const info = await service.inspect();
 
 		const updatedSpec = { ...info.Spec };
 
@@ -294,23 +285,22 @@ export class DockerService implements OnModuleInit {
 			updatedSpec.TaskTemplate.ContainerSpec.Image = updates.image;
 		}
 
-        // Force update by adding/updating a label with timestamp
-        // This forces Docker to re-pull the image even if the tag is the same
-        if (updates.forceUpdate && updatedSpec.TaskTemplate?.ContainerSpec) {
-            updatedSpec.TaskTemplate.ContainerSpec.Labels = {
-                ...updatedSpec.TaskTemplate.ContainerSpec.Labels,
-                'wp-paas.force-update': Date.now().toString(),
-            };
-        }
+		if (updates.forceUpdate && updatedSpec.TaskTemplate?.ContainerSpec) {
+			updatedSpec.TaskTemplate.ContainerSpec.Labels = {
+				...updatedSpec.TaskTemplate.ContainerSpec.Labels,
+				"wp-paas.force-update": Date.now().toString(),
+			};
+		}
 
-        // Use forceUpdate flag to trigger rolling update
-        await service.update({
-            version: parseInt(info.Version?.Index?.toString() || '0', 10),
-            ...updatedSpec,
-        });
+		await service.update({
+			version: parseInt(info.Version?.Index?.toString() || "0", 10),
+			...updatedSpec,
+		});
 
-        this.logger.log(`Service updated: ${nameOrId}${updates.forceUpdate ? ' (force)' : ''}`);
-    }
+		this.logger.log(
+			`Service updated: ${nameOrId}${updates.forceUpdate ? " (force)" : ""}`
+		);
+	}
 
 	async removeService(nameOrId: string): Promise<void> {
 		const service = this.docker.getService(nameOrId);
@@ -343,80 +333,80 @@ export class DockerService implements OnModuleInit {
 		});
 	}
 
-    async scaleService(nameOrId: string, replicas: number): Promise<void> {
-        await this.updateService(nameOrId, { replicas });
-        this.logger.log(`Service ${nameOrId} scaled to ${replicas} replicas`);
-    }
+	async scaleService(nameOrId: string, replicas: number): Promise<void> {
+		await this.updateService(nameOrId, { replicas });
+		this.logger.log(`Service ${nameOrId} scaled to ${replicas} replicas`);
+	}
 
-    async getServiceStats(nameOrId: string): Promise<{
-        cpuPercent: number;
-        memoryUsage: number;
-        memoryLimit: number;
-        memoryPercent: number;
-    } | null> {
-        try {
-            // Get service tasks (containers)
-            const service = this.docker.getService(nameOrId);
-            const info = await service.inspect();
-            const serviceName = info.Spec?.Name || nameOrId;
+	async getServiceStats(nameOrId: string): Promise<{
+		cpuPercent: number;
+		memoryUsage: number;
+		memoryLimit: number;
+		memoryPercent: number;
+	} | null> {
+		try {
+			const service = this.docker.getService(nameOrId);
+			const info = await service.inspect();
+			const serviceName = info.Spec?.Name || nameOrId;
 
-            // List tasks for this service
-            const tasks = await this.docker.listTasks({
-                filters: { service: [serviceName], 'desired-state': ['running'] },
-            });
+			const tasks = await this.docker.listTasks({
+				filters: { service: [serviceName], "desired-state": ["running"] },
+			});
 
-            if (tasks.length === 0) {
-                return null;
-            }
+			if (tasks.length === 0) {
+				return null;
+			}
 
-            let totalCpu = 0;
-            let totalMemory = 0;
-            let totalMemoryLimit = 0;
-            let containerCount = 0;
+			let totalCpu = 0;
+			let totalMemory = 0;
+			let totalMemoryLimit = 0;
+			let containerCount = 0;
 
-            // Get stats for each container
-            for (const task of tasks) {
-                if (task.Status?.ContainerStatus?.ContainerID) {
-                    try {
-                        const container = this.docker.getContainer(task.Status.ContainerStatus.ContainerID);
-                        const stats = await container.stats({ stream: false });
+			for (const task of tasks) {
+				if (task.Status?.ContainerStatus?.ContainerID) {
+					try {
+						const container = this.docker.getContainer(
+							task.Status.ContainerStatus.ContainerID
+						);
+						const stats = await container.stats({ stream: false });
 
-                        // Calculate CPU percentage
-                        const cpuDelta = stats.cpu_stats.cpu_usage.total_usage -
-                            (stats.precpu_stats?.cpu_usage?.total_usage || 0);
-                        const systemDelta = stats.cpu_stats.system_cpu_usage -
-                            (stats.precpu_stats?.system_cpu_usage || 0);
-                        const cpuCount = stats.cpu_stats.online_cpus || 1;
+						const cpuDelta =
+							stats.cpu_stats.cpu_usage.total_usage -
+							(stats.precpu_stats?.cpu_usage?.total_usage || 0);
+						const systemDelta =
+							stats.cpu_stats.system_cpu_usage -
+							(stats.precpu_stats?.system_cpu_usage || 0);
+						const cpuCount = stats.cpu_stats.online_cpus || 1;
 
-                        if (systemDelta > 0) {
-                            totalCpu += (cpuDelta / systemDelta) * cpuCount * 100;
-                        }
+						if (systemDelta > 0) {
+							totalCpu += (cpuDelta / systemDelta) * cpuCount * 100;
+						}
 
-                        // Memory usage
-                        totalMemory += stats.memory_stats.usage || 0;
-                        totalMemoryLimit += stats.memory_stats.limit || 0;
-                        containerCount++;
-                    } catch (err) {
-                        this.logger.warn(`Failed to get stats for container: ${err}`);
-                    }
-                }
-            }
+						totalMemory += stats.memory_stats.usage || 0;
+						totalMemoryLimit += stats.memory_stats.limit || 0;
+						containerCount++;
+					} catch (err) {
+						this.logger.warn(`Failed to get stats for container: ${err}`);
+					}
+				}
+			}
 
-            if (containerCount === 0) {
-                return null;
-            }
+			if (containerCount === 0) {
+				return null;
+			}
 
-            return {
-                cpuPercent: Math.round(totalCpu * 100) / 100,
-                memoryUsage: totalMemory,
-                memoryLimit: totalMemoryLimit,
-                memoryPercent: totalMemoryLimit > 0
-                    ? Math.round((totalMemory / totalMemoryLimit) * 10000) / 100
-                    : 0,
-            };
-        } catch (error) {
-            this.logger.warn(`Failed to get service stats for ${nameOrId}: ${error}`);
-            return null;
-        }
-    }
+			return {
+				cpuPercent: Math.round(totalCpu * 100) / 100,
+				memoryUsage: totalMemory,
+				memoryLimit: totalMemoryLimit,
+				memoryPercent:
+					totalMemoryLimit > 0
+						? Math.round((totalMemory / totalMemoryLimit) * 10000) / 100
+						: 0,
+			};
+		} catch (error) {
+			this.logger.warn(`Failed to get service stats for ${nameOrId}: ${error}`);
+			return null;
+		}
+	}
 }

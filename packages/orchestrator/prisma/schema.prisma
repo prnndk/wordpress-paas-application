@@ -113,6 +113,8 @@ model Tenant {
   replicas        Int          @default(1)
   status          TenantStatus @default(creating)
   isActive        Boolean      @default(true) @map("is_active")
+
+  // Timestamps
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
@@ -151,7 +153,6 @@ model Subscription {
   @@index([endDate])
   @@map("subscriptions")
 }
-
 model Announcement {
   id          String    @id @default(cuid())
   title       String
@@ -167,7 +168,6 @@ model Announcement {
   @@index([scheduledAt])
   @@map("announcements")
 }
-
 model Checkout {
   id        String         @id @default(cuid())
   userId    String         @map("user_id")
