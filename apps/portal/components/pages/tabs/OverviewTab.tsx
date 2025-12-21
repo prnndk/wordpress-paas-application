@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import {
 	ExternalLink,
+	RotateCw,
 	Copy,
 	Eye,
 	EyeOff,
@@ -75,19 +76,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 				const data = (prometheusData as any).data || prometheusData;
 
 				// Map Prometheus data to our format
-				// Storage not available from Prometheus per-container - fetch from Docker API
-				let storagePercent = 0;
-				let storageGb = parseFloat(instance.specs?.storage) || 20;
-
-				// Try to get storage from Docker API
-				try {
-					const dockerMetrics = await dashboardService.getMetrics(instance.id, timeRange);
-					storagePercent = dockerMetrics.resources?.storage || 0;
-					storageGb = dockerMetrics.specs?.storageGb || storageGb;
-				} catch {
-					// Fallback to estimate
-					storagePercent = Math.floor(25 + Math.random() * 20);
-				}
+				// Storage now comes from Prometheus (host-level filesystem metrics)
+				const storagePercent = data.storage?.percent || 0;
+				const storageGb = data.storage?.total ? data.storage.total / (1024 * 1024 * 1024) : 20;
 
 				setResources({
 					cpu: data.cpu?.current || 0,
@@ -182,6 +173,20 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 			showToast(error.message || "Failed to purge cache");
 		} finally {
 			setIsPurging(false);
+		}
+	};
+
+	const handleRestartPhp = async () => {
+		if (isRestarting || !instance?.id) return;
+
+		setIsRestarting(true);
+		try {
+			const result = await dashboardService.restartPhp(instance.id);
+			showToast(result.message || "PHP restarted successfully");
+		} catch (error: any) {
+			showToast(error.message || "Failed to restart PHP");
+		} finally {
+			setIsRestarting(false);
 		}
 	};
 
@@ -458,8 +463,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 								style={{ width: `${resources.storage}%` }}></div>
 						</div>
 						<p className='text-xs text-slate-500 text-right'>
-							{((specs.storageGb * 1024 * resources.storage) / 100).toFixed(0)} MB /{" "}
-							{specs.storageGb * 1024} MB
+							{((specs.storageGb * resources.storage) / 100 * 1024).toFixed(0)} MB /{" "}
+							{(specs.storageGb * 1024).toFixed(0)} MB
 						</p>
 					</div>
 				</div>

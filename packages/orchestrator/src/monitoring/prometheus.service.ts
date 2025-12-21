@@ -32,6 +32,11 @@ export interface TenantMetrics {
         rxRate: number;
         txRate: number;
     };
+    storage: {
+        used: number;
+        total: number;
+        percent: number;
+    };
     containerCount: number;
     timestamp: Date;
 }
@@ -154,6 +159,15 @@ export class PrometheusService {
                 count(container_memory_usage_bytes{id=~"/system.slice/docker-.*\\\\.scope"})
             `;
 
+            // Filesystem/Storage metrics (host-level, as per-container fs is not available)
+            const storageUsageQuery = `
+                sum(container_fs_usage_bytes{id="/"})
+            `;
+
+            const storageTotalQuery = `
+                sum(container_fs_limit_bytes{id="/"})
+            `;
+
             // Execute all queries in parallel
             const [
                 cpuResult,
@@ -163,6 +177,8 @@ export class PrometheusService {
                 networkRxRateResult,
                 networkTxRateResult,
                 containerCountResult,
+                storageUsageResult,
+                storageTotalResult,
             ] = await Promise.all([
                 this.query(cpuQuery),
                 this.query(memoryQuery),
@@ -171,6 +187,8 @@ export class PrometheusService {
                 this.query(networkRxRateQuery),
                 this.query(networkTxRateQuery),
                 this.query(containerCountQuery),
+                this.query(storageUsageQuery),
+                this.query(storageTotalQuery),
             ]);
 
             // Extract values from results
@@ -192,6 +210,8 @@ export class PrometheusService {
             const networkTx = extractValue(networkTxResult);
             const networkRxRate = extractValue(networkRxRateResult);
             const networkTxRate = extractValue(networkTxRateResult);
+            const storageUsed = extractValue(storageUsageResult);
+            const storageTotal = extractValue(storageTotalResult);
 
             return {
                 cpu: {
@@ -212,6 +232,11 @@ export class PrometheusService {
                     rxRate: Math.round(networkRxRate * 100) / 100,
                     txRate: Math.round(networkTxRate * 100) / 100,
                 },
+                storage: {
+                    used: storageUsed,
+                    total: storageTotal,
+                    percent: storageTotal > 0 ? Math.round((storageUsed / storageTotal) * 10000) / 100 : 0,
+                },
                 containerCount: containerCount,
                 timestamp: new Date(),
             };
@@ -222,6 +247,7 @@ export class PrometheusService {
                 cpu: { current: 0, avg: 0, max: 0 },
                 memory: { current: 0, limit: 0, percent: 0 },
                 network: { rxBytes: 0, txBytes: 0, rxRate: 0, txRate: 0 },
+                storage: { used: 0, total: 0, percent: 0 },
                 containerCount: 0,
                 timestamp: new Date(),
             };

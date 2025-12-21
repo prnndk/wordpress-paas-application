@@ -140,7 +140,13 @@ export const InstanceDetails: React.FC = () => {
 		} else {
 			// Only show "not found" if instances have been loaded
 			setInstance(null);
-			setLoading(false);
+		}
+	};
+
+	// Sync with global instances context when instances change
+	useEffect(() => {
+		if (instances.length > 0 && instance) {
+			syncFromContext();
 		}
 	}, [instances, id]);
 
