@@ -1,18 +1,15 @@
 # Traefik Static Configuration
-# For WordPress PaaS Reverse Proxy
+# For WordPress PaaS Reverse Proxy (Traefik v2.x)
 
 api:
   dashboard: true
-  insecure: false
+  insecure: true  # Enable API on port 8080 (required for /metrics endpoint)
+
+ping: {}  # Enable ping endpoint for healthcheck
 
 entryPoints:
   web:
     address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
   websecure:
     address: ":443"
     http:

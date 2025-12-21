@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDashboard } from "../../context/DashboardContext";
 import { useAuth } from "../../context/AuthContext";
@@ -9,6 +9,7 @@ import {
 	type AuditSummary,
 } from "../../src/lib/auth";
 import { adminService, type AdminStats } from "../../src/lib/admin";
+import { dashboardService } from "../../src/lib/dashboard";
 import { AuditLogModal } from "../modals/AuditLogModal";
 import {
 	Plus,
@@ -26,6 +27,8 @@ import {
 	Shield,
 	Wrench,
 	Boxes,
+	Cpu,
+	Wifi,
 } from "lucide-react";
 
 export const DashboardHome: React.FC = () => {
@@ -48,6 +51,16 @@ export const DashboardHome: React.FC = () => {
 	const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 	const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 	const isAdmin = authUser?.roles?.includes("admin");
+
+	// Prometheus metrics state for aggregated user instance metrics
+	const [liveMetrics, setLiveMetrics] = useState<{
+		totalCpu: number;
+		totalMemory: number;
+		totalContainers: number;
+		networkRx: number;
+		networkTx: number;
+	} | null>(null);
+	const [metricsLoading, setMetricsLoading] = useState(false);
 
 	// Fetch data from cached profile or refresh
 	useEffect(() => {
@@ -90,6 +103,56 @@ export const DashboardHome: React.FC = () => {
 			adminService.getStats().then(setAdminStats).catch(console.error);
 		}
 	}, [isAdmin]);
+
+	// Fetch aggregated Prometheus metrics for all user instances
+	const fetchLiveMetrics = useCallback(async () => {
+		if (instances.length === 0) return;
+
+		try {
+			setMetricsLoading(true);
+			// Aggregate metrics from all running instances
+			const runningInstances = instances.filter(i => i.status === "running");
+			let totalCpu = 0;
+			let totalMemory = 0;
+			let totalContainers = 0;
+			let networkRx = 0;
+			let networkTx = 0;
+
+			// Fetch metrics for each instance
+			const metricsPromises = runningInstances.map(async (inst) => {
+				try {
+					const response = await dashboardService.getPrometheusMetrics(inst.id);
+					const data = (response as any).data || response;
+					return data;
+				} catch {
+					return null;
+				}
+			});
+
+			const results = await Promise.all(metricsPromises);
+			results.forEach((data) => {
+				if (data) {
+					totalCpu += data.cpu?.current || 0;
+					totalMemory += data.memory?.current || 0;
+					totalContainers += data.containerCount || 0;
+					networkRx += data.network?.rxRate || 0;
+					networkTx += data.network?.txRate || 0;
+				}
+			});
+
+			setLiveMetrics({ totalCpu, totalMemory, totalContainers, networkRx, networkTx });
+		} catch (error) {
+			console.error("Failed to fetch live metrics:", error);
+		} finally {
+			setMetricsLoading(false);
+		}
+	}, [instances]);
+
+	useEffect(() => {
+		fetchLiveMetrics();
+		const interval = setInterval(fetchLiveMetrics, 30000); // Refresh every 30s
+		return () => clearInterval(interval);
+	}, [fetchLiveMetrics]);
 
 	// Calculate dynamic stats from real data
 	const activeCount = instances.filter((i) => i.status === "running").length;
@@ -204,17 +267,15 @@ export const DashboardHome: React.FC = () => {
 							<Server className='w-6 h-6' />
 						</div>
 						<div
-							className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-								activeCount > 0
-									? "bg-green-100 text-green-700"
-									: "bg-slate-100 text-slate-600"
-							}`}>
+							className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${activeCount > 0
+								? "bg-green-100 text-green-700"
+								: "bg-slate-100 text-slate-600"
+								}`}>
 							<div
-								className={`w-1.5 h-1.5 rounded-full ${
-									activeCount > 0
-										? "bg-green-500 animate-pulse"
-										: "bg-slate-400"
-								}`}></div>
+								className={`w-1.5 h-1.5 rounded-full ${activeCount > 0
+									? "bg-green-500 animate-pulse"
+									: "bg-slate-400"
+									}`}></div>
 							{activeCount > 0 ? "System Online" : "No Active Services"}
 						</div>
 					</div>
@@ -449,6 +510,68 @@ export const DashboardHome: React.FC = () => {
 				</div>
 			)}
 
+			{/* Live Metrics from Prometheus */}
+			{instances.length > 0 && (
+				<div className='bg-gradient-to-r from-slate-900 to-slate-800 p-6 rounded-xl shadow-lg'>
+					<div className='flex items-center justify-between mb-4'>
+						<div className='flex items-center gap-3'>
+							<div className='p-2 bg-green-500/20 rounded-lg'>
+								<Activity className='w-5 h-5 text-green-400' />
+							</div>
+							<div>
+								<h3 className='text-lg font-bold text-white'>Live Usage</h3>
+								<p className='text-sm text-slate-400'>Real-time metrics from Prometheus</p>
+							</div>
+						</div>
+						{metricsLoading && (
+							<Loader2 className='w-4 h-4 animate-spin text-slate-400' />
+						)}
+					</div>
+
+					<div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+						{/* CPU */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Cpu className='w-3.5 h-3.5' /> CPU USAGE
+							</div>
+							<p className='text-2xl font-bold text-white'>
+								{liveMetrics ? `${liveMetrics.totalCpu.toFixed(1)}%` : '--'}
+							</p>
+						</div>
+
+						{/* Memory */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Server className='w-3.5 h-3.5' /> MEMORY
+							</div>
+							<p className='text-2xl font-bold text-white'>
+								{liveMetrics ? `${(liveMetrics.totalMemory / (1024 * 1024 * 1024)).toFixed(2)} GB` : '--'}
+							</p>
+						</div>
+
+						{/* Network RX */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Wifi className='w-3.5 h-3.5' /> NET IN
+							</div>
+							<p className='text-2xl font-bold text-emerald-400'>
+								{liveMetrics ? `${(liveMetrics.networkRx / 1024).toFixed(1)} KB/s` : '--'}
+							</p>
+						</div>
+
+						{/* Network TX */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Wifi className='w-3.5 h-3.5' /> NET OUT
+							</div>
+							<p className='text-2xl font-bold text-blue-400'>
+								{liveMetrics ? `${(liveMetrics.networkTx / 1024).toFixed(1)} KB/s` : '--'}
+							</p>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{/* Main Content Area */}
 			<div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>
 				{/* Left Column: Instance List */}
@@ -499,15 +622,14 @@ export const DashboardHome: React.FC = () => {
 										onClick={() => navigate(`/instance/${inst.id}`)}>
 										<div className='flex items-center gap-4'>
 											<div
-												className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${
-													inst.status === "running"
-														? "bg-green-100 text-green-700"
-														: inst.status === "provisioning"
+												className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${inst.status === "running"
+													? "bg-green-100 text-green-700"
+													: inst.status === "provisioning"
 														? "bg-amber-100 text-amber-700"
 														: inst.status === "error"
-														? "bg-red-100 text-red-700"
-														: "bg-slate-100 text-slate-500"
-												}`}>
+															? "bg-red-100 text-red-700"
+															: "bg-slate-100 text-slate-500"
+													}`}>
 												WP
 											</div>
 											<div>
@@ -537,13 +659,12 @@ export const DashboardHome: React.FC = () => {
 												</div>
 											</div>
 											<div
-												className={`px-3 py-1 rounded-full text-xs font-bold capitalize border ${
-													inst.status === "running"
-														? "bg-green-50 text-green-700 border-green-200"
-														: inst.status === "provisioning"
+												className={`px-3 py-1 rounded-full text-xs font-bold capitalize border ${inst.status === "running"
+													? "bg-green-50 text-green-700 border-green-200"
+													: inst.status === "provisioning"
 														? "bg-amber-50 text-amber-700 border-amber-200"
 														: "bg-slate-50 text-slate-600 border-slate-200"
-												}`}>
+													}`}>
 												{inst.status}
 											</div>
 											<ChevronRight className='w-5 h-5 text-slate-300 group-hover:text-indigo-400 transition-colors' />
@@ -667,13 +788,12 @@ export const DashboardHome: React.FC = () => {
 									return (
 										<div key={log.id} className='relative pl-10 py-3 group'>
 											<div
-												className={`absolute left-0 top-3.5 w-[10px] h-[10px] rounded-full border-2 border-white ring-1 z-10 ${
-													log.level === "error"
-														? "bg-red-500 ring-red-100"
-														: log.level === "warn"
+												className={`absolute left-0 top-3.5 w-[10px] h-[10px] rounded-full border-2 border-white ring-1 z-10 ${log.level === "error"
+													? "bg-red-500 ring-red-100"
+													: log.level === "warn"
 														? "bg-amber-500 ring-amber-100"
 														: "bg-indigo-500 ring-indigo-100"
-												}`}></div>
+													}`}></div>
 											<div className='bg-white p-3 rounded-lg border border-slate-100 shadow-sm group-hover:border-indigo-100 group-hover:shadow-md transition-all'>
 												<p className='text-sm text-slate-900 font-semibold leading-tight'>
 													{formatted.action}

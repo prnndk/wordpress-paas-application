@@ -121,14 +121,29 @@ export const InstanceDetails: React.FC = () => {
 	const syncFromContext = () => {
 		const foundInstance = instances.find((i) => i.id === id);
 		if (foundInstance) {
-			// Merge with current instance data to preserve detailed fields
-			setInstance((prev: any) =>
-				prev ? { ...prev, ...foundInstance } : foundInstance
-			);
+			// Enrich with missing details
+			const enrichedInstance = {
+				...foundInstance,
+				endpoints: foundInstance.endpoints || {
+					site: `http://${foundInstance.slug}`,
+					admin: `http://${foundInstance.slug}/wp-admin/`,
+				},
+				db: {
+					host: `db-cluster-${foundInstance.region.split("-")[1] || "01"
+						}.internal`,
+					name: `wp_${foundInstance.slug.replace(/-/g, "_")}`,
+					user: `user_${foundInstance.id.split("_")[1] || "admin"}`,
+				},
+			};
+			setInstance(enrichedInstance);
+			setLoading(false);
+		} else {
+			// Only show "not found" if instances have been loaded
+			setInstance(null);
 		}
 	};
 
-	// Sync with global instances context (for quick status updates between polls)
+	// Sync with global instances context when instances change
 	useEffect(() => {
 		if (instances.length > 0 && instance) {
 			syncFromContext();
@@ -489,9 +504,8 @@ export const InstanceDetails: React.FC = () => {
 											: rect.right + window.scrollX - 224, // Responsive alignment
 								});
 							}}
-							className={`p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-indigo-600 transition-colors ${
-								activeMenu ? "bg-slate-50 text-indigo-600" : ""
-							}`}>
+							className={`p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-indigo-600 transition-colors ${activeMenu ? "bg-slate-50 text-indigo-600" : ""
+								}`}>
 							<MoreHorizontal className='w-5 h-5' />
 						</button>
 					</div>
@@ -510,11 +524,10 @@ export const InstanceDetails: React.FC = () => {
 						<button
 							key={tab.id}
 							onClick={() => setActiveTab(tab.id as any)}
-							className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
-								activeTab === tab.id
-									? "border-indigo-600 text-indigo-600"
-									: "border-transparent text-slate-500 hover:text-slate-700"
-							}`}>
+							className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === tab.id
+								? "border-indigo-600 text-indigo-600"
+								: "border-transparent text-slate-500 hover:text-slate-700"
+								}`}>
 							{tab.id === "admin" && <Shield className='w-3 h-3' />}
 							{tab.label}
 						</button>
@@ -525,7 +538,7 @@ export const InstanceDetails: React.FC = () => {
 				<div className='p-6 bg-slate-50 min-h-[600px]'>
 					{activeTab === "overview" && <OverviewTab instance={instance} />}
 
-					{activeTab === "analytics" && <AnalyticsTab />}
+					{activeTab === "analytics" && <AnalyticsTab instanceId={instance.id} />}
 
 					{activeTab === "settings" && <SettingsTab instance={instance} />}
 
