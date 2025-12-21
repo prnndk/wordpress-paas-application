@@ -168,6 +168,32 @@ model Announcement {
   @@index([scheduledAt])
   @@map("announcements")
 }
+
+model ScheduledMaintenance {
+  id                String    @id @default(cuid())
+  scheduledAt       DateTime  @map("scheduled_at")
+  targetImage       String    @map("target_image")
+  status            String    @default("pending") @map("status") // pending, in_progress, completed, failed, cancelled
+  forceUpdate       Boolean   @default(false) @map("force_update")
+  
+  // Execution tracking
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  
+  // Results
+  servicesUpdated   String?   @db.Text @map("services_updated") // JSON array
+  errors            String?   @db.Text @map("errors") // JSON array
+  
+  // Linked announcement (optional)
+  announcementId    String?   @map("announcement_id")
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  @@index([scheduledAt])
+  @@index([status])
+  @@map("scheduled_maintenances")
+}
 model Checkout {
   id        String         @id @default(cuid())
   userId    String         @map("user_id")

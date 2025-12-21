@@ -53,6 +53,22 @@ class RollingUpdateDto {
     forceUpdate?: boolean;
 }
 
+class CreateScheduledMaintenanceDto {
+    @IsDateString()
+    scheduledAt!: string;
+
+    @IsString()
+    targetImage!: string;
+
+    @IsBoolean()
+    @IsOptional()
+    forceUpdate?: boolean;
+
+    @IsString()
+    @IsOptional()
+    announcementId?: string;
+}
+
 @ApiTags('Admin - Maintenance')
 @Controller('admin/maintenance')
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -83,6 +99,38 @@ export class MaintenanceController {
     ) {
         return this.maintenanceService.updateSingleService(serviceName, dto.image);
     }
+
+    // Scheduled Maintenance Endpoints
+    @Post('schedule')
+    @ApiOperation({ summary: 'Create scheduled maintenance' })
+    async createScheduledMaintenance(@Body() dto: CreateScheduledMaintenanceDto) {
+        return this.maintenanceService.createScheduledMaintenance({
+            scheduledAt: new Date(dto.scheduledAt),
+            targetImage: dto.targetImage,
+            forceUpdate: dto.forceUpdate,
+            announcementId: dto.announcementId,
+        });
+    }
+
+    @Get('schedule')
+    @ApiOperation({ summary: 'Get all scheduled maintenances' })
+    async getScheduledMaintenances() {
+        return this.maintenanceService.getScheduledMaintenances();
+    }
+
+    @Delete('schedule/:id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Cancel scheduled maintenance' })
+    async cancelScheduledMaintenance(@Param('id') id: string) {
+        await this.maintenanceService.cancelScheduledMaintenance(id);
+    }
+
+    @Post('schedule/:id/execute')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Manually execute scheduled maintenance' })
+    async executeScheduledMaintenance(@Param('id') id: string) {
+        return this.maintenanceService.executeScheduledMaintenance(id);
+    }
 }
 
 // Public announcements endpoint (no admin guard)
@@ -95,6 +143,23 @@ export class AnnouncementsController {
     @ApiOperation({ summary: 'Get active announcements (public)' })
     async getActiveAnnouncements() {
         return this.maintenanceService.getActiveAnnouncements();
+    }
+}
+
+// Public maintenance status endpoint
+@ApiTags('Maintenance')
+@Controller('maintenance')
+export class MaintenanceStatusController {
+    constructor(private readonly maintenanceService: MaintenanceService) { }
+
+    @Get('status')
+    @ApiOperation({ summary: 'Check if maintenance is currently active (public)' })
+    async getMaintenanceStatus() {
+        const isActive = await this.maintenanceService.checkActiveMaintenanceWindow();
+        if (!isActive) {
+            return { isActive: false };
+        }
+        return this.maintenanceService.getActiveMaintenanceInfo();
     }
 }
 
