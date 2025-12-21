@@ -74,6 +74,10 @@ export interface AdminTenant {
 		email: string;
 		name: string | null;
 	};
+	urls: {
+		frontend: string;
+		admin: string;
+	};
 	docker?: {
 		serviceId: string;
 		desiredReplicas: number;
@@ -166,4 +170,16 @@ export const adminService = {
 		api.post<{ success: boolean; replicas: number }>(`/tenants/${tenantId}/scale`, {
 			replicas,
 		}),
+
+	/**
+	 * Rebuild tenant container (force recreate with latest image)
+	 */
+	rebuildTenant: (tenantId: string) =>
+		api.post<{ success: boolean; message: string }>(`/tenants/${tenantId}/rebuild`),
+
+	/**
+	 * Get tenant container logs
+	 */
+	getTenantLogs: (tenantId: string, tail: number = 50) =>
+		api.get<{ logs: string }>(`/tenants/${tenantId}/logs?tail=${tail}`),
 };

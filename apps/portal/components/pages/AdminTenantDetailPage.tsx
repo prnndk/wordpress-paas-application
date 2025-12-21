@@ -14,6 +14,8 @@ import {
     RefreshCw,
     AlertTriangle,
     CheckCircle,
+    RotateCcw,
+    Terminal,
 } from "lucide-react";
 import { adminService, AdminTenant } from "../../src/lib/admin";
 
@@ -26,6 +28,12 @@ export const AdminTenantDetailPage: React.FC = () => {
     const [replicas, setReplicas] = useState(1);
     const [scaling, setScaling] = useState(false);
     const [scaleSuccess, setScaleSuccess] = useState(false);
+    const [rebuilding, setRebuilding] = useState(false);
+    const [rebuildSuccess, setRebuildSuccess] = useState(false);
+    const [rebuildError, setRebuildError] = useState<string | null>(null);
+    const [logs, setLogs] = useState<string>("");
+    const [logsLoading, setLogsLoading] = useState(false);
+    const [showLogs, setShowLogs] = useState(false);
 
     useEffect(() => {
         fetchTenant();
@@ -42,6 +50,26 @@ export const AdminTenantDetailPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchLogs = async () => {
+        if (!id) return;
+        setLogsLoading(true);
+        try {
+            const data = await adminService.getTenantLogs(id, 100);
+            setLogs(data.logs);
+        } catch (err: any) {
+            setLogs("Failed to fetch logs: " + (err.message || "Unknown error"));
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
+    const handleToggleLogs = () => {
+        if (!showLogs) {
+            fetchLogs();
+        }
+        setShowLogs(!showLogs);
     };
 
     const handleScale = async () => {
@@ -67,6 +95,30 @@ export const AdminTenantDetailPage: React.FC = () => {
             console.error("Failed to scale:", err);
         } finally {
             setScaling(false);
+        }
+    };
+
+    const handleRebuild = async () => {
+        if (!tenant || rebuilding) return;
+
+        setRebuilding(true);
+        setRebuildError(null);
+        setRebuildSuccess(false);
+
+        try {
+            const result = await adminService.rebuildTenant(tenant.id);
+            if (result.success) {
+                setRebuildSuccess(true);
+                setTimeout(() => {
+                    fetchTenant();
+                    setRebuildSuccess(false);
+                }, 3000);
+            }
+        } catch (err: any) {
+            setRebuildError(err.message || "Failed to rebuild container");
+            setTimeout(() => setRebuildError(null), 5000);
+        } finally {
+            setRebuilding(false);
         }
     };
 
@@ -117,10 +169,10 @@ export const AdminTenantDetailPage: React.FC = () => {
                 </div>
                 <span
                     className={`px-3 py-1.5 rounded-full text-sm font-medium ${tenant.status === "running"
-                            ? "bg-green-50 text-green-700"
-                            : tenant.status === "creating"
-                                ? "bg-blue-50 text-blue-700"
-                                : "bg-slate-100 text-slate-600"
+                        ? "bg-green-50 text-green-700"
+                        : tenant.status === "creating"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-slate-100 text-slate-600"
                         }`}>
                     {tenant.status}
                 </span>
@@ -166,6 +218,99 @@ export const AdminTenantDetailPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Container Logs Section */}
+            <div className='bg-white rounded-xl border border-slate-200 overflow-hidden'>
+                <div className='px-6 py-4 border-b border-slate-100 flex items-center justify-between'>
+                    <div>
+                        <h2 className='font-medium text-slate-900'>Container Logs</h2>
+                        <p className='text-sm text-slate-500 mt-1'>
+                            View latest logs from the WordPress container
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleToggleLogs}
+                        className='px-4 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2'>
+                        <Terminal className='w-4 h-4' />
+                        {showLogs ? "Hide Logs" : "Show Logs"}
+                    </button>
+                </div>
+                {showLogs && (
+                    <div className='p-4'>
+                        {logsLoading ? (
+                            <div className='flex items-center justify-center py-8'>
+                                <Loader2 className='w-6 h-6 animate-spin text-slate-400' />
+                            </div>
+                        ) : (
+                            <>
+                                <div className='flex justify-end mb-2'>
+                                    <button
+                                        onClick={fetchLogs}
+                                        className='text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1'>
+                                        <RefreshCw className='w-3 h-3' />
+                                        Refresh
+                                    </button>
+                                </div>
+                                <pre className='bg-slate-900 text-green-400 p-4 rounded-lg text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap'>
+                                    {logs || "No logs available"}
+                                </pre>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Rebuild Section */}
+            <div className='bg-white rounded-xl border border-slate-200 overflow-hidden'>
+                <div className='px-6 py-4 border-b border-slate-100'>
+                    <h2 className='font-medium text-slate-900'>Rebuild Container</h2>
+                    <p className='text-sm text-slate-500 mt-1'>
+                        Force recreate containers with the latest Docker image. Data is preserved.
+                    </p>
+                </div>
+                <div className='p-6'>
+                    <div className='flex items-center justify-between'>
+                        <div className='text-sm text-slate-600'>
+                            <p>Current image: <code className='text-xs bg-slate-100 px-2 py-1 rounded'>{tenant.docker?.image || "N/A"}</code></p>
+                        </div>
+                        <button
+                            onClick={handleRebuild}
+                            disabled={rebuilding}
+                            className='px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2'>
+                            {rebuilding ? (
+                                <>
+                                    <Loader2 className='w-4 h-4 animate-spin' />
+                                    Rebuilding...
+                                </>
+                            ) : rebuildSuccess ? (
+                                <>
+                                    <CheckCircle className='w-4 h-4' />
+                                    Rebuild Started!
+                                </>
+                            ) : (
+                                <>
+                                    <RotateCcw className='w-4 h-4' />
+                                    Rebuild Container
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    {rebuildSuccess && (
+                        <div className='mt-4 flex items-center gap-2 text-sm text-green-600 bg-green-50 px-4 py-3 rounded-lg'>
+                            <CheckCircle className='w-4 h-4' />
+                            Container rebuild initiated successfully.
+                        </div>
+                    )}
+
+                    {rebuildError && (
+                        <div className='mt-4 flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-lg'>
+                            <AlertTriangle className='w-4 h-4' />
+                            {rebuildError}
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Scale Section */}
             <div className='bg-white rounded-xl border border-slate-200 overflow-hidden'>
                 <div className='px-6 py-4 border-b border-slate-100'>
@@ -175,7 +320,6 @@ export const AdminTenantDetailPage: React.FC = () => {
                     </p>
                 </div>
                 <div className='p-6 space-y-6'>
-                    {/* Slider */}
                     <div>
                         <div className='flex items-center justify-between mb-2'>
                             <span className='text-sm text-slate-500'>Replicas</span>
@@ -197,7 +341,6 @@ export const AdminTenantDetailPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Action Row */}
                     <div className='flex items-center justify-between'>
                         <div className='text-sm text-slate-500'>
                             {replicas !== currentReplicas ? (
@@ -229,7 +372,6 @@ export const AdminTenantDetailPage: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Warning */}
                     {replicas > 5 && (
                         <div className='flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-4 py-3 rounded-lg'>
                             <AlertTriangle className='w-4 h-4' />
@@ -287,7 +429,7 @@ export const AdminTenantDetailPage: React.FC = () => {
                     Refresh
                 </button>
                 <a
-                    href={`http://${window.location.hostname}/${tenant.subdomain}/wp-admin/`}
+                    href={`http://10.28.85.212${tenant.urls.admin}/`}
                     target='_blank'
                     rel='noopener noreferrer'
                     className='flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors'>

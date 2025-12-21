@@ -228,6 +228,42 @@ export class WordPressService {
         this.logger.log(`WordPress deleted: ${serviceName}`);
     }
 
+    async rebuildWordPress(tenantId: string): Promise<{ success: boolean; message: string }> {
+        const serviceName = `wp_${tenantId}`;
+        this.logger.log(`Rebuilding WordPress service: ${serviceName}`);
+
+        try {
+            // Get current tenant info
+            const tenant = await this.tenantRepository.findById(tenantId);
+            if (!tenant) {
+                throw new Error('Tenant not found');
+            }
+
+            // Update status
+            await this.tenantRepository.updateStatus(tenantId, 'creating');
+
+            // Force update the service with latest image - this recreates all containers
+            const wpImage = process.env.WORDPRESS_IMAGE || 'prnndk/wp-paas-wordpress:latest';
+            await this.dockerService.updateService(serviceName, {
+                image: wpImage,
+                forceUpdate: true,
+            });
+
+            // Wait a bit for containers to start recreating
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+
+            // Update status back to running
+            await this.tenantRepository.updateStatus(tenantId, 'running');
+
+            this.logger.log(`WordPress rebuilt successfully: ${serviceName}`);
+            return { success: true, message: 'Container rebuild initiated successfully' };
+        } catch (error) {
+            this.logger.error(`Failed to rebuild WordPress: ${serviceName}`, error);
+            await this.tenantRepository.updateStatus(tenantId, 'error');
+            throw error;
+        }
+    }
+
     async scaleWordPress(tenantId: string, replicas: number): Promise<{ success: boolean; replicas: number }> {
         const serviceName = `wp_${tenantId}`;
 

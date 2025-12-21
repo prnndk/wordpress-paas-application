@@ -34,7 +34,8 @@ import {
     Cpu,
     MemoryStick,
     Network,
-    RefreshCw
+    RefreshCw,
+    Terminal
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -76,6 +77,9 @@ export default function InstanceDetailPage() {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [metrics, setMetrics] = useState<ContainerMetrics[]>([]);
     const [metricsLoading, setMetricsLoading] = useState(false);
+    const [logs, setLogs] = useState<string>('');
+    const [logsLoading, setLogsLoading] = useState(false);
+    const [showLogs, setShowLogs] = useState(false);
 
     const instanceId = params.id as string;
 
@@ -155,6 +159,33 @@ export default function InstanceDetailPage() {
         }
         return undefined;
     }, [instance?.id, instance?.status]);
+
+    const fetchLogs = async () => {
+        if (!instanceId) return;
+        setLogsLoading(true);
+        const token = localStorage.getItem('accessToken');
+        try {
+            const res = await fetch(`/api/v1/tenants/${instanceId}/logs?tail=100`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setLogs(data.logs || 'No logs available');
+            }
+        } catch (error) {
+            console.error('Failed to fetch logs:', error);
+            setLogs('Failed to fetch logs');
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
+    const handleToggleLogs = () => {
+        if (!showLogs) {
+            fetchLogs();
+        }
+        setShowLogs(!showLogs);
+    };
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'delete') => {
         setActionLoading(action);
@@ -484,6 +515,51 @@ export default function InstanceDetailPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Container Logs Section */}
+            <Card className="glass gradient-border">
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                            <Terminal className="w-5 h-5 text-primary" />
+                            Container Logs
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleToggleLogs}
+                        >
+                            {showLogs ? 'Hide Logs' : 'Show Logs'}
+                        </Button>
+                    </CardTitle>
+                </CardHeader>
+                {showLogs && (
+                    <CardContent>
+                        {logsLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex justify-end mb-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={fetchLogs}
+                                        className="text-sm"
+                                    >
+                                        <RefreshCw className="w-4 h-4 mr-1" />
+                                        Refresh
+                                    </Button>
+                                </div>
+                                <pre className="bg-black/80 text-green-400 p-4 rounded-lg text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">
+                                    {logs || 'No logs available'}
+                                </pre>
+                            </>
+                        )}
+                    </CardContent>
+                )}
+            </Card>
 
             {/* Resource Monitoring Section */}
             {instance.status === 'running' && (

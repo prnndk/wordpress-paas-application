@@ -153,6 +153,22 @@ export class TenantsController {
         await this.tenantsService.restartTenant(id);
     }
 
+    @Post(":id/rebuild")
+    @ApiOperation({
+        summary: "Rebuild a WordPress instance",
+        description: "Force recreates containers with the latest image. Data is preserved."
+    })
+    @ApiParam({ name: "id", description: "Tenant ID" })
+    @ApiResponse({ status: 200, description: "Rebuild initiated successfully" })
+    @ApiResponse({ status: 404, description: "Instance not found" })
+    async rebuild(@Param("id") id: string): Promise<{ success: boolean; message: string }> {
+        const tenant = await this.tenantsService.getTenant(id);
+        if (!tenant) {
+            throw new NotFoundException("Instance not found");
+        }
+        return this.tenantsService.rebuildTenant(id);
+    }
+
     @Delete(":id")
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: "Delete a WordPress instance" })

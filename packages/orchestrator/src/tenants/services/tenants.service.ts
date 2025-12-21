@@ -403,6 +403,11 @@ export class TenantsService {
         await this.wordpressService.restartWordPress(tenantId);
     }
 
+    async rebuildTenant(tenantId: string): Promise<{ success: boolean; message: string }> {
+        this.logger.log(`Rebuilding tenant: ${tenantId}`);
+        return this.wordpressService.rebuildWordPress(tenantId);
+    }
+
     async deleteTenant(tenantId: string): Promise<void> {
         this.logger.log(`Deleting tenant: ${tenantId}`);
 
