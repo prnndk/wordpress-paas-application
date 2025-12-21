@@ -95,9 +95,11 @@ export interface ScheduledMaintenance {
 	forceUpdate: boolean;
 	startedAt: string | null;
 	completedAt: string | null;
+	progress: string | null; // JSON: {current: number, total: number, currentService: string}
 	servicesUpdated: string | null;
 	errors: string | null;
 	announcementId: string | null;
+	targetTenantIds: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -107,6 +109,13 @@ export interface CreateScheduledMaintenancePayload {
 	targetImage: string;
 	forceUpdate?: boolean;
 	announcementId?: string;
+	targetTenantIds?: string[];
+}
+
+export interface WordPressTenant {
+	id: string;
+	name: string;
+	slug: string;
 }
 
 export interface MaintenanceStatus {
@@ -151,6 +160,11 @@ export const adminService = {
 	 * Get current WordPress Docker image
 	 */
 	getCurrentImage: () => api.get<CurrentImageInfo>("/admin/maintenance/image"),
+
+	/**
+	 * Get available WordPress tenants
+	 */
+	getAvailableTenants: () => api.get<WordPressTenant[]>("/admin/maintenance/tenants"),
 
 	/**
 	 * Start rolling update for all WordPress instances

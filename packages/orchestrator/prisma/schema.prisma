@@ -164,6 +164,9 @@ model Announcement {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  // Relations
+  scheduledMaintenances ScheduledMaintenance[]
+
   @@index([isActive])
   @@index([scheduledAt])
   @@map("announcements")
@@ -179,6 +182,7 @@ model ScheduledMaintenance {
   // Execution tracking
   startedAt         DateTime? @map("started_at")
   completedAt       DateTime? @map("completed_at")
+  progress          String?   @db.Text @map("progress") // JSON: {current: 0, total: 0, currentService: ""}
   
   // Results
   servicesUpdated   String?   @db.Text @map("services_updated") // JSON array
@@ -186,6 +190,10 @@ model ScheduledMaintenance {
   
   // Linked announcement (optional)
   announcementId    String?   @map("announcement_id")
+  announcement      Announcement? @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  
+  // Target tenants (optional, null = all tenants)
+  targetTenantIds   String?   @db.Text @map("target_tenant_ids") // JSON array of tenant IDs
   
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")

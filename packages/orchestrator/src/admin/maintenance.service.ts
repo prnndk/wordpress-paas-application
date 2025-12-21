@@ -21,6 +21,7 @@ interface CreateScheduledMaintenanceDto {
     targetImage: string;
     forceUpdate?: boolean;
     announcementId?: string;
+    targetTenantIds?: string[]; // Optional: specific tenant IDs to update
 }
 
 @Injectable()
@@ -95,6 +96,7 @@ export class MaintenanceService {
                 targetImage: data.targetImage,
                 forceUpdate: data.forceUpdate || false,
                 announcementId: data.announcementId,
+                targetTenantIds: data.targetTenantIds ? JSON.stringify(data.targetTenantIds) : null,
                 status: 'pending',
             },
         });
@@ -103,6 +105,7 @@ export class MaintenanceService {
     async getScheduledMaintenances() {
         return this.prisma.scheduledMaintenance.findMany({
             orderBy: { scheduledAt: 'desc' },
+            include: { announcement: true },
         });
     }
 
@@ -166,18 +169,35 @@ export class MaintenanceService {
 
         // Mark as in progress
         this.currentMaintenanceId = id;
+
+        // Get total services count for progress tracking
+        const targetTenantIds = maintenance.targetTenantIds ? JSON.parse(maintenance.targetTenantIds) : null;
+        let allServices = await this.dockerService.listServices({ 'wp-paas.type': 'wordpress' });
+
+        if (targetTenantIds && targetTenantIds.length > 0) {
+            allServices = allServices.filter(service => {
+                const serviceIdPart = service.name.replace('wp_', '');
+                return targetTenantIds.includes(serviceIdPart);
+            });
+        }
+
+        const totalServices = allServices.length;
+
         await this.prisma.scheduledMaintenance.update({
             where: { id },
             data: {
                 status: 'in_progress',
                 startedAt: new Date(),
+                progress: JSON.stringify({ current: 0, total: totalServices, currentService: '' }),
             },
         });
 
         try {
             const result = await this.performRollingUpdateWithHealthCheck(
                 maintenance.targetImage,
-                maintenance.forceUpdate
+                maintenance.forceUpdate,
+                targetTenantIds,
+                id  // Pass maintenance ID for progress updates
             );
 
             // Update maintenance record with results
@@ -209,8 +229,14 @@ export class MaintenanceService {
         }
     }
 
-    async performRollingUpdateWithHealthCheck(newImage: string, forceUpdate: boolean = false): Promise<RollingUpdateResult> {
-        this.logger.log(`Starting rolling update with health checks to image: ${newImage}${forceUpdate ? ' (force)' : ''}`);
+    async performRollingUpdateWithHealthCheck(
+        newImage: string,
+        forceUpdate: boolean = false,
+        targetTenantIds: string[] | null = null,
+        maintenanceId: string | null = null
+    ): Promise<RollingUpdateResult> {
+        const tenantFilter = targetTenantIds ? ` for ${targetTenantIds.length} specific tenant(s)` : ' for all tenants';
+        this.logger.log(`Starting rolling update with health checks to image: ${newImage}${forceUpdate ? ' (force)' : ''}${tenantFilter}`);
 
         const result: RollingUpdateResult = {
             success: true,
@@ -219,16 +245,57 @@ export class MaintenanceService {
         };
 
         // Get all WordPress services
-        const services = await this.dockerService.listServices({
+        let services = await this.dockerService.listServices({
             'wp-paas.type': 'wordpress',
         });
 
+        // Filter by tenant IDs if specified
+        if (targetTenantIds && targetTenantIds.length > 0) {
+            // Get tenant data from database for the specified IDs
+            const tenants = await this.prisma.tenant.findMany({
+                where: { id: { in: targetTenantIds } },
+                select: { id: true, slug: true },
+            });
+
+            this.logger.log(`Target tenants: ${JSON.stringify(tenants)}`);
+            this.logger.log(`Available services before filter: ${services.map(s => s.name).join(', ')}`);
+
+            // Service names use tenant ID in format: wp_{tenantId}
+            // So we filter by checking if service name contains the tenant ID
+            services = services.filter(service => {
+                // Service name format is wp_{tenantId}, extract the ID part
+                const serviceIdPart = service.name.replace('wp_', '');
+                return targetTenantIds.includes(serviceIdPart);
+            });
+
+            this.logger.log(`Filtered to ${services.length} services matching target tenant IDs`);
+            this.logger.log(`Filtered services: ${services.map(s => s.name).join(', ')}`);
+        }
+
         this.logger.log(`Found ${services.length} WordPress services to update`);
+
+        const totalServices = services.length;
+        let currentServiceIndex = 0;
 
         for (const service of services) {
             try {
+                currentServiceIndex++;
                 const currentImage = service.image;
-                this.logger.log(`Processing service ${service.name} (current: ${currentImage}, target: ${newImage})`);
+                this.logger.log(`Processing service ${service.name} (${currentServiceIndex}/${totalServices}) (current: ${currentImage}, target: ${newImage})`);
+
+                // Update progress in database
+                if (maintenanceId) {
+                    await this.prisma.scheduledMaintenance.update({
+                        where: { id: maintenanceId },
+                        data: {
+                            progress: JSON.stringify({
+                                current: currentServiceIndex - 1,
+                                total: totalServices,
+                                currentService: service.name,
+                            }),
+                        },
+                    });
+                }
 
                 // Get current replica count
                 const replicas = service.replicas;
@@ -245,7 +312,11 @@ export class MaintenanceService {
                     forceUpdate: forceUpdate,
                 });
 
-                // Wait for update to complete and verify health
+                // Wait for Docker to start the update process and detect any image pull failures
+                this.logger.log(`Waiting 10 seconds for Docker Swarm to pull image and start update process...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+
+                // Wait for service to become healthy with the new image
                 const healthCheckPassed = await this.waitForServiceHealth(service.name, replicas, 120);
 
                 if (!healthCheckPassed) {
@@ -257,15 +328,31 @@ export class MaintenanceService {
                         forceUpdate: true,
                     });
 
-                    result.errors.push(`Health check failed for ${service.name}, rolled back to ${currentImage}`);
+                    const errorMessage = `Failed to update ${service.name}: Health check failed after 120s`;
+                    this.logger.error(errorMessage);
+                    result.errors.push(errorMessage);
                     result.success = false;
 
-                    // Stop the rolling update process
+                    // Stop the entire rolling update process
                     break;
                 }
 
-                result.servicesUpdated.push(service.name);
                 this.logger.log(`Successfully updated and verified ${service.name}`);
+                result.servicesUpdated.push(service.name);
+
+                // Update progress after successful update
+                if (maintenanceId) {
+                    await this.prisma.scheduledMaintenance.update({
+                        where: { id: maintenanceId },
+                        data: {
+                            progress: JSON.stringify({
+                                current: currentServiceIndex,
+                                total: totalServices,
+                                currentService: '',
+                            }),
+                        },
+                    });
+                }
 
             } catch (error) {
                 const errorMessage = `Failed to update ${service.name}: ${error}`;
@@ -279,43 +366,65 @@ export class MaintenanceService {
         return result;
     }
 
-    private async waitForServiceHealth(serviceName: string, expectedReplicas: number, timeoutSeconds: number): Promise<boolean> {
+    private async waitForServiceHealth(
+        serviceName: string,
+        expectedReplicas: number,
+        timeoutSeconds: number
+    ): Promise<boolean> {
         this.logger.log(`Waiting for service ${serviceName} to become healthy (${expectedReplicas} replicas, timeout: ${timeoutSeconds}s)`);
 
         const startTime = Date.now();
         const timeoutMs = timeoutSeconds * 1000;
 
         while (Date.now() - startTime < timeoutMs) {
-            try {
-                const serviceInfo = await this.dockerService.getService(serviceName);
+            const services = await this.dockerService.listServices({
+                'wp-paas.type': 'wordpress',
+            });
 
-                if (!serviceInfo) {
-                    this.logger.warn(`Service ${serviceName} not found`);
-                    await this.sleep(5000);
-                    continue;
-                }
+            const service = services.find(s => s.name === serviceName);
 
-                this.logger.log(`Service ${serviceName}: ${serviceInfo.runningReplicas}/${expectedReplicas} replicas running`);
-
-                if (serviceInfo.runningReplicas >= expectedReplicas) {
-                    this.logger.log(`Service ${serviceName} is healthy with ${serviceInfo.runningReplicas} running replicas`);
-                    return true;
-                }
-
-                // Wait before next check
-                await this.sleep(5000);
-            } catch (error) {
-                this.logger.error(`Error checking service health for ${serviceName}:`, error);
-                await this.sleep(5000);
+            if (!service) {
+                this.logger.error(`Service ${serviceName} not found during health check`);
+                return false;
             }
+
+            const runningReplicas = service.runningReplicas;
+            this.logger.log(`Service ${serviceName}: ${runningReplicas}/${expectedReplicas} replicas running`);
+
+            // Fail-fast: If any replica is in failed state, immediately return false
+            // Check if there are tasks in rejected/failed state
+            try {
+                const serviceDetails = await this.dockerService.getService(serviceName);
+                if (serviceDetails) {
+                    // If we have fewer running replicas than expected and some time has passed,
+                    // it likely means some replicas failed to start
+                    const elapsedSeconds = (Date.now() - startTime) / 1000;
+
+                    // After 30 seconds, if we don't have all replicas running, consider it a failure
+                    if (elapsedSeconds > 30 && runningReplicas < expectedReplicas) {
+                        this.logger.error(
+                            `Service ${serviceName} has only ${runningReplicas}/${expectedReplicas} replicas running after ${Math.round(elapsedSeconds)}s. Failing fast.`
+                        );
+                        return false;
+                    }
+                }
+            } catch (error) {
+                this.logger.warn(`Could not get detailed service info: ${error}`);
+            }
+
+            // Success: All replicas are running
+            if (runningReplicas >= expectedReplicas) {
+                this.logger.log(`Service ${serviceName} is healthy with ${runningReplicas} running replicas`);
+                return true;
+            }
+
+            // Wait 5 seconds before next check
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
 
-        this.logger.error(`Timeout waiting for service ${serviceName} to become healthy`);
+        // Timeout reached
+        this.logger.error(`Health check timeout for ${serviceName} after ${timeoutSeconds}s`);
         return false;
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     // Legacy method - kept for backward compatibility
@@ -358,7 +467,26 @@ export class MaintenanceService {
     async updateSingleService(serviceName: string, newImage: string) {
         this.logger.log(`Updating service ${serviceName} to image: ${newImage}`);
         await this.dockerService.updateService(serviceName, { image: newImage });
-        return { success: true, serviceName };
+        return { message: 'Service updated successfully' };
+    }
+
+    async getAvailableWordPressTenants() {
+        // Get all tenants that have WordPress instances
+        const tenants = await this.prisma.tenant.findMany({
+            where: {
+                status: 'running', // Only show running tenants
+            },
+            select: {
+                id: true,
+                name: true,
+                slug: true,
+            },
+            orderBy: {
+                name: 'asc',
+            },
+        });
+
+        return tenants;
     }
 
     async getCurrentWordPressImage() {
