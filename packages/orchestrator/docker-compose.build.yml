@@ -1,0 +1,12 @@
+# Docker Compose for building the custom WordPress image
+# Run: docker-compose -f docker-compose.build.yml build
+# Then tag and push if needed: docker tag wp-paas-custom:latest your-registry/wp-paas-custom:latest
+
+version: "3.8"
+
+services:
+  wordpress-custom:
+    build:
+      context: ./docker/wordpress
+      dockerfile: Dockerfile
+    image: wp-paas-custom:latest

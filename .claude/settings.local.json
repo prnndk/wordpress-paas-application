@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(bash:*)",
+      "Bash(ls:*)",
+      "Bash(Dashboard)",
+      "Bash(pnpm --filter @orchestrator prisma migrate dev:*)",
+      "Bash(npx prisma migrate:*)"
+    ]
+  }
+}

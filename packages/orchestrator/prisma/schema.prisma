@@ -12,7 +12,11 @@ datasource db {
 
 enum TenantStatus {
   creating
+  provisioning
   running
+  starting
+  stopping
+  restarting
   stopped
   error
   deleted
@@ -20,8 +24,14 @@ enum TenantStatus {
 
 enum PlanTier {
   free
+  hobby
   starter
-  professional
+  starter_plus
+  pro
+  pro_plus
+  business
+  business_plus
+  agency
   enterprise
 }
 
@@ -34,6 +44,13 @@ enum SubscriptionStatus {
 enum UserRole {
   user
   admin
+}
+
+enum CheckoutStatus {
+  pending
+  success
+  failed
+  cancelled
 }
 
 model User {
@@ -49,6 +66,9 @@ model User {
   // Relations
   tenants       Tenant[]
   subscriptions Subscription[]
+  checkouts     Checkout[]
+  invoices      Invoice[]
+  paymentMethods PaymentMethod[]
 
   @@index([email])
   @@index([role])
@@ -59,16 +79,42 @@ model Tenant {
   id              String       @id @default(cuid())
   userId          String       @map("user_id")
   name            String
-  subdomain       String       @unique
+  slug            String       @unique  // URL path segment, e.g. "my-site"
+  region          String       @default("us-east-1")
+
+  // Resource specs
+  cpuCores        Float        @default(1) @map("cpu_cores")
+  ramGb           Float        @default(2) @map("ram_gb")
+  storageGb       Int          @default(10) @map("storage_gb")
+
+
+
+  // Environment variables (JSON array)
+  envVars         String?      @db.Text @map("env_vars")
+
+  // Notes
+  notes           String?      @db.Text
+
+  // Endpoints (path-based URLs)
+  endpoints       String?      @db.Text  // JSON: { site: "https://...", admin: "https://..." }
+
+  // Database credentials
   dbName          String       @map("db_name")
   dbUser          String       @map("db_user")
   dbPassword      String       @map("db_password")
+
+  // WordPress admin
   wpAdminUser     String       @default("admin") @map("wp_admin_user")
   wpAdminPassword String?      @map("wp_admin_password")
+  wpAdminEmail    String?      @map("wp_admin_email")
+
+  // Plan and status
   planId          PlanTier     @default(free) @map("plan_id")
   replicas        Int          @default(1)
   status          TenantStatus @default(creating)
   isActive        Boolean      @default(true) @map("is_active")
+
+  // Timestamps
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
@@ -76,7 +122,7 @@ model Tenant {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([subdomain])
+  @@index([slug])
   @@index([status])
   @@index([planId])
   @@map("tenants")
@@ -92,6 +138,13 @@ model Subscription {
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
+  // Resource limits (derived from plan, stored for quick access)
+  maxInstances  Int   @default(1) @map("max_instances")
+  maxCpuCores   Float @default(1) @map("max_cpu_cores")
+  maxRamGb      Float @default(0.5) @map("max_ram_gb")
+  maxStorageGb  Int   @default(5) @map("max_storage_gb")
+  maxBandwidthGb Int  @default(10) @map("max_bandwidth_gb")
+
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -100,7 +153,6 @@ model Subscription {
   @@index([endDate])
   @@map("subscriptions")
 }
-
 model Announcement {
   id          String    @id @default(cuid())
   title       String
@@ -115,4 +167,82 @@ model Announcement {
   @@index([isActive])
   @@index([scheduledAt])
   @@map("announcements")
+}
+model Checkout {
+  id        String         @id @default(cuid())
+  userId    String         @map("user_id")
+  planId    String         @map("plan_id")
+  status    CheckoutStatus @default(pending)
+  amount    Float
+  currency  String         @default("USD")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("checkouts")
+}
+
+enum InvoiceStatus {
+  draft
+  paid
+  overdue
+  cancelled
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  amount      Float
+  currency    String        @default("USD")
+  status      InvoiceStatus @default(paid)
+  description String?
+  planId      String?       @map("plan_id")
+  planName    String?       @map("plan_name")
+  
+  // Invoice metadata
+  invoiceNumber String   @unique @map("invoice_number")
+  issuedAt      DateTime @default(now()) @map("issued_at")
+  dueDate       DateTime? @map("due_date")
+  paidAt        DateTime? @map("paid_at")
+  
+  // PDF generation metadata (mock)
+  downloadUrl String? @map("download_url")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([issuedAt])
+  @@map("invoices")
+}
+
+model PaymentMethod {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  
+  // Mock payment data (never store real card numbers!)
+  brand     String   // e.g., "visa", "mastercard"
+  last4     String   // Last 4 digits
+  expMonth  Int      @map("exp_month")
+  expYear   Int      @map("exp_year")
+  
+  // Metadata
+  isDefault Boolean  @default(false) @map("is_default")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("payment_methods")
 }
