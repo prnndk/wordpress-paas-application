@@ -70,14 +70,14 @@ export class AuthService {
         return { id: user.id, email: user.email };
     }
 
-    async getUser(userId: string): Promise<{ id: string; email: string; name: string | null } | null> {
+    async getUser(userId: string): Promise<{ id: string; email: string; name: string | null; role: string } | null> {
         const user = await this.userRepository.findById(userId);
 
         if (!user) {
             return null;
         }
 
-        return { id: user.id, email: user.email, name: user.name };
+        return { id: user.id, email: user.email, name: user.name, role: user.role };
     }
 
     private generateTokens(payload: UserPayload): AuthTokens {

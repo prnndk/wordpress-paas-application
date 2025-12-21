@@ -25,19 +25,19 @@ interface LogsResponse {
     data: string[];
 }
 
-@Controller('api/v1/tenants')
+@Controller('monitoring')
 @UseGuards(JwtAuthGuard)
 export class MonitoringController {
     constructor(private readonly monitoringService: MonitoringService) { }
 
     /**
-     * Get metrics for a specific instance
+     * Get metrics for a specific instance by tenant ID
      */
-    @Get(':subdomain/metrics')
+    @Get(':tenantId/metrics')
     async getInstanceMetrics(
-        @Param('subdomain') subdomain: string,
+        @Param('tenantId') tenantId: string,
     ): Promise<MetricsResponse> {
-        const metrics = await this.monitoringService.getInstanceMetrics(subdomain);
+        const metrics = await this.monitoringService.getInstanceMetrics(tenantId);
 
         return {
             success: true,
@@ -49,19 +49,41 @@ export class MonitoringController {
     }
 
     /**
-     * Get logs for a specific instance
+     * Get logs for a specific instance by tenant ID
      */
-    @Get(':subdomain/logs')
+    @Get(':tenantId/logs')
     async getInstanceLogs(
-        @Param('subdomain') subdomain: string,
+        @Param('tenantId') tenantId: string,
         @Query('lines') lines?: string,
     ): Promise<LogsResponse> {
         const numLines = lines ? parseInt(lines, 10) : 100;
-        const logs = await this.monitoringService.getInstanceLogs(subdomain, numLines);
+        const logs = await this.monitoringService.getInstanceLogs(tenantId, numLines);
 
         return {
             success: true,
             data: logs,
+        };
+    }
+
+    /**
+     * Get metrics for all WordPress instances (admin)
+     */
+    @Get('all')
+    async getAllMetrics() {
+        const allMetrics = await this.monitoringService.getAllInstancesMetrics();
+
+        const result: Record<string, MetricsResponse['data']> = {};
+
+        allMetrics.forEach((metrics, key) => {
+            result[key] = metrics.map(m => ({
+                ...m,
+                timestamp: m.timestamp.toISOString(),
+            }));
+        });
+
+        return {
+            success: true,
+            data: result,
         };
     }
 }

@@ -199,7 +199,7 @@ export class DockerService implements OnModuleInit {
 
     async updateService(
         nameOrId: string,
-        updates: Partial<{ replicas: number; image: string }>,
+        updates: Partial<{ replicas: number; image: string; forceUpdate: boolean }>,
     ): Promise<void> {
         const service = this.docker.getService(nameOrId);
         const info = await service.inspect();
@@ -214,12 +214,22 @@ export class DockerService implements OnModuleInit {
             updatedSpec.TaskTemplate.ContainerSpec.Image = updates.image;
         }
 
+        // Force update by adding/updating a label with timestamp
+        // This forces Docker to re-pull the image even if the tag is the same
+        if (updates.forceUpdate && updatedSpec.TaskTemplate?.ContainerSpec) {
+            updatedSpec.TaskTemplate.ContainerSpec.Labels = {
+                ...updatedSpec.TaskTemplate.ContainerSpec.Labels,
+                'wp-paas.force-update': Date.now().toString(),
+            };
+        }
+
+        // Use forceUpdate flag to trigger rolling update
         await service.update({
             version: parseInt(info.Version?.Index?.toString() || '0', 10),
             ...updatedSpec,
         });
 
-        this.logger.log(`Service updated: ${nameOrId}`);
+        this.logger.log(`Service updated: ${nameOrId}${updates.forceUpdate ? ' (force)' : ''}`);
     }
 
     async removeService(nameOrId: string): Promise<void> {
@@ -256,5 +266,77 @@ export class DockerService implements OnModuleInit {
     async scaleService(nameOrId: string, replicas: number): Promise<void> {
         await this.updateService(nameOrId, { replicas });
         this.logger.log(`Service ${nameOrId} scaled to ${replicas} replicas`);
+    }
+
+    async getServiceStats(nameOrId: string): Promise<{
+        cpuPercent: number;
+        memoryUsage: number;
+        memoryLimit: number;
+        memoryPercent: number;
+    } | null> {
+        try {
+            // Get service tasks (containers)
+            const service = this.docker.getService(nameOrId);
+            const info = await service.inspect();
+            const serviceName = info.Spec?.Name || nameOrId;
+
+            // List tasks for this service
+            const tasks = await this.docker.listTasks({
+                filters: { service: [serviceName], 'desired-state': ['running'] },
+            });
+
+            if (tasks.length === 0) {
+                return null;
+            }
+
+            let totalCpu = 0;
+            let totalMemory = 0;
+            let totalMemoryLimit = 0;
+            let containerCount = 0;
+
+            // Get stats for each container
+            for (const task of tasks) {
+                if (task.Status?.ContainerStatus?.ContainerID) {
+                    try {
+                        const container = this.docker.getContainer(task.Status.ContainerStatus.ContainerID);
+                        const stats = await container.stats({ stream: false });
+
+                        // Calculate CPU percentage
+                        const cpuDelta = stats.cpu_stats.cpu_usage.total_usage -
+                            (stats.precpu_stats?.cpu_usage?.total_usage || 0);
+                        const systemDelta = stats.cpu_stats.system_cpu_usage -
+                            (stats.precpu_stats?.system_cpu_usage || 0);
+                        const cpuCount = stats.cpu_stats.online_cpus || 1;
+
+                        if (systemDelta > 0) {
+                            totalCpu += (cpuDelta / systemDelta) * cpuCount * 100;
+                        }
+
+                        // Memory usage
+                        totalMemory += stats.memory_stats.usage || 0;
+                        totalMemoryLimit += stats.memory_stats.limit || 0;
+                        containerCount++;
+                    } catch (err) {
+                        this.logger.warn(`Failed to get stats for container: ${err}`);
+                    }
+                }
+            }
+
+            if (containerCount === 0) {
+                return null;
+            }
+
+            return {
+                cpuPercent: Math.round(totalCpu * 100) / 100,
+                memoryUsage: totalMemory,
+                memoryLimit: totalMemoryLimit,
+                memoryPercent: totalMemoryLimit > 0
+                    ? Math.round((totalMemory / totalMemoryLimit) * 10000) / 100
+                    : 0,
+            };
+        } catch (error) {
+            this.logger.warn(`Failed to get service stats for ${nameOrId}: ${error}`);
+            return null;
+        }
     }
 }

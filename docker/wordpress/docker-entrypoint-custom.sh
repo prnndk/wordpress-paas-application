@@ -28,6 +28,16 @@ configure_wordpress() {
     done
     echo "wp-config.php found!"
 
+    # CRITICAL: Copy mu-plugins for path-based routing fix
+    # This must happen after volume is mounted but before WordPress is used
+    if [ -d /opt/wp-paas-mu-plugins ]; then
+        echo "Installing WP-PaaS must-use plugins..."
+        mkdir -p /var/www/html/wp-content/mu-plugins
+        cp -r /opt/wp-paas-mu-plugins/* /var/www/html/wp-content/mu-plugins/
+        chown -R www-data:www-data /var/www/html/wp-content/mu-plugins/
+        echo "mu-plugins installed!"
+    fi
+
     # Check if WordPress is already installed
     cd /var/www/html
     if ! wp core is-installed --allow-root 2>/dev/null; then
@@ -103,13 +113,11 @@ configure_wordpress() {
     if [ -n "${S3_UPLOADS_ENDPOINT:-}" ] && [ -n "${S3_UPLOADS_BUCKET:-}" ]; then
         echo "Configuring MinIO/S3 storage..."
         
-        if ! wp plugin is-installed s3-uploads --allow-root 2>/dev/null; then
-            cd /tmp
-            curl -sL -o s3-uploads.zip https://github.com/humanmade/S3-Uploads/archive/refs/heads/master.zip
-            unzip -q s3-uploads.zip
-            mv S3-Uploads-master /var/www/html/wp-content/plugins/s3-uploads
+        # Copy pre-installed S3 Uploads plugin (includes Composer dependencies)
+        if [ -d /opt/s3-uploads ] && [ ! -d /var/www/html/wp-content/plugins/s3-uploads ]; then
+            echo "Installing S3 Uploads plugin with dependencies..."
+            cp -r /opt/s3-uploads /var/www/html/wp-content/plugins/s3-uploads
             chown -R www-data:www-data /var/www/html/wp-content/plugins/s3-uploads
-            cd /var/www/html
             echo "S3 Uploads plugin installed!"
         fi
         

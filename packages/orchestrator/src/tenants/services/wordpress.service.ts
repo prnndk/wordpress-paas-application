@@ -87,6 +87,7 @@ export class WordPressService {
             ],
             labels: {
                 'wp-paas.tenant': tenantId,
+                'wp-paas.tenant-id': tenantId,
                 'wp-paas.subdomain': subdomain,
                 'wp-paas.type': 'wordpress',
                 // Traefik labels for path-based routing (http://IP/subdomain/)

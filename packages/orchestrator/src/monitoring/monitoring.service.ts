@@ -43,12 +43,35 @@ export class MonitoringService {
 
     /**
      * Get metrics for a specific WordPress instance
+     * Works with Docker Swarm by getting task info and attempting container stats
+     * Falls back gracefully when container is on a remote node
      */
-    async getInstanceMetrics(subdomain: string): Promise<InstanceMetrics[]> {
-        const serviceName = `wp_${subdomain}`;
+    async getInstanceMetrics(tenantId: string): Promise<InstanceMetrics[]> {
+        const serviceName = `wp_${tenantId}`;
         const metrics: InstanceMetrics[] = [];
 
         try {
+            // First check if service exists
+            const service = this.docker.getService(serviceName);
+            let serviceInfo;
+            try {
+                serviceInfo = await service.inspect();
+            } catch {
+                // Service doesn't exist
+                return [{
+                    containerId: 'N/A',
+                    containerName: serviceName,
+                    status: 'not_found',
+                    stats: null,
+                    timestamp: new Date(),
+                }];
+            }
+
+            // Get resource limits from service spec
+            const resources = serviceInfo.Spec?.TaskTemplate?.Resources;
+            const memoryLimit = resources?.Limits?.MemoryBytes || 0;
+            // cpuLimit available in: resources?.Limits?.NanoCPUs
+
             // Get all tasks for the service
             const tasks = await this.docker.listTasks({
                 filters: {
@@ -57,39 +80,70 @@ export class MonitoringService {
                 },
             });
 
+            if (tasks.length === 0) {
+                // No running tasks
+                return [{
+                    containerId: 'N/A',
+                    containerName: serviceName,
+                    status: 'no_tasks',
+                    stats: {
+                        cpuPercent: 0,
+                        memoryUsage: 0,
+                        memoryLimit: memoryLimit,
+                        memoryPercent: 0,
+                        networkRx: 0,
+                        networkTx: 0,
+                    },
+                    timestamp: new Date(),
+                }];
+            }
+
             // Get container stats for each running task
             for (const task of tasks) {
-                if (task.Status?.ContainerStatus?.ContainerID) {
-                    const containerId = task.Status.ContainerStatus.ContainerID;
+                const containerId = task.Status?.ContainerStatus?.ContainerID;
+                const nodeId = task.NodeID;
+                const slot = task.Slot || 1;
 
+                // Try to get container stats (only works if container is local)
+                let stats: ContainerStats | null = null;
+
+                if (containerId) {
                     try {
                         const container = this.docker.getContainer(containerId);
-                        const stats = await this.getContainerStats(container);
-
-                        metrics.push({
-                            containerId: containerId.substring(0, 12),
-                            containerName: `${serviceName}.${task.Slot || 1}`,
-                            status: task.Status.State || 'unknown',
-                            stats,
-                            timestamp: new Date(),
-                        });
-                    } catch (err) {
-                        this.logger.warn(`Failed to get stats for container ${containerId}: ${err}`);
-                        metrics.push({
-                            containerId: containerId.substring(0, 12),
-                            containerName: `${serviceName}.${task.Slot || 1}`,
-                            status: task.Status.State || 'unknown',
-                            stats: null,
-                            timestamp: new Date(),
-                        });
+                        stats = await this.getContainerStats(container);
+                    } catch {
+                        // Container is on a different node - this is expected in multi-node Swarm
+                        // Use estimated values from service spec
+                        stats = {
+                            cpuPercent: 0, // Unknown - container on remote node
+                            memoryUsage: 0,
+                            memoryLimit: memoryLimit,
+                            memoryPercent: 0,
+                            networkRx: 0,
+                            networkTx: 0,
+                        };
                     }
                 }
+
+                metrics.push({
+                    containerId: containerId ? containerId.substring(0, 12) : 'pending',
+                    containerName: `${serviceName}.${slot}${nodeId ? ` (node: ${nodeId.substring(0, 8)})` : ''}`,
+                    status: task.Status?.State || 'unknown',
+                    stats,
+                    timestamp: new Date(),
+                });
             }
 
             return metrics;
         } catch (error) {
             this.logger.error(`Failed to get metrics for ${serviceName}: ${error}`);
-            throw error;
+            return [{
+                containerId: 'error',
+                containerName: serviceName,
+                status: 'error',
+                stats: null,
+                timestamp: new Date(),
+            }];
         }
     }
 
@@ -151,8 +205,8 @@ export class MonitoringService {
     /**
      * Get logs for a specific WordPress instance
      */
-    async getInstanceLogs(subdomain: string, lines: number = 100): Promise<string[]> {
-        const serviceName = `wp_${subdomain}`;
+    async getInstanceLogs(tenantId: string, lines: number = 100): Promise<string[]> {
+        const serviceName = `wp_${tenantId}`;
 
         try {
             const service = this.docker.getService(serviceName);
@@ -194,10 +248,11 @@ export class MonitoringService {
             });
 
             for (const service of services) {
+                const tenantId = service.Spec?.Labels?.['wp-paas.tenant-id'];
                 const subdomain = service.Spec?.Labels?.['wp-paas.subdomain'];
-                if (subdomain) {
-                    const metrics = await this.getInstanceMetrics(subdomain);
-                    allMetrics.set(subdomain, metrics);
+                if (tenantId) {
+                    const metrics = await this.getInstanceMetrics(tenantId);
+                    allMetrics.set(subdomain || tenantId, metrics);
                 }
             }
 

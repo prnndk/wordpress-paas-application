@@ -119,13 +119,13 @@ export default function InstanceDetailPage() {
     };
 
     const fetchMetrics = async () => {
-        if (!instance?.subdomain) return;
+        if (!instance?.id) return;
 
         setMetricsLoading(true);
         const token = localStorage.getItem('accessToken');
 
         try {
-            const res = await fetch(`/api/v1/tenants/${instance.subdomain}/metrics`, {
+            const res = await fetch(`/api/v1/monitoring/${instance.id}/metrics`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -148,12 +148,12 @@ export default function InstanceDetailPage() {
 
     // Auto-refresh metrics every 10 seconds
     useEffect(() => {
-        if (instance?.subdomain && instance?.status === 'running') {
+        if (instance?.id && instance?.status === 'running') {
             fetchMetrics();
             const interval = setInterval(fetchMetrics, 10000);
             return () => clearInterval(interval);
         }
-    }, [instance?.subdomain, instance?.status]);
+    }, [instance?.id, instance?.status]);
 
     const handleAction = async (action: 'start' | 'stop' | 'restart' | 'delete') => {
         setActionLoading(action);

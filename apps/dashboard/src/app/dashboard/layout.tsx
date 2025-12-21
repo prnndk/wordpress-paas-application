@@ -10,13 +10,23 @@ import {
     Settings,
     LogOut,
     Menu,
-    X
+    X,
+    Shield,
+    Users,
+    Wrench
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { AnnouncementBanner } from '@/components/announcement-banner';
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
+}
+
+interface UserInfo {
+    email: string;
+    name: string | null;
+    role?: string;
 }
 
 const navItems = [
@@ -25,11 +35,19 @@ const navItems = [
     { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ];
 
+const adminNavItems = [
+    { href: '/dashboard/admin', icon: Shield, label: 'Admin Overview' },
+    { href: '/dashboard/admin/users', icon: Users, label: 'Users' },
+    { href: '/dashboard/admin/tenants', icon: Server, label: 'All Tenants' },
+    { href: '/dashboard/admin/maintenance', icon: Wrench, label: 'Maintenance' },
+];
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [user, setUser] = useState<{ email: string; name: string | null } | null>(null);
+    const [user, setUser] = useState<UserInfo | null>(null);
+    const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
         const token = localStorage.getItem('accessToken');
@@ -46,11 +64,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 if (!res.ok) throw new Error('Unauthorized');
                 return res.json();
             })
-            .then(setUser)
+            .then((userData) => {
+                setUser(userData);
+                // Check if user is admin
+                if (userData.role === 'admin') {
+                    setIsAdmin(true);
+                }
+            })
             .catch(() => {
                 localStorage.removeItem('accessToken');
                 router.push('/login');
             });
+
+        // Also check admin access by trying to hit admin endpoint
+        fetch('/api/v1/admin/stats', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+            .then((res) => {
+                if (res.ok) setIsAdmin(true);
+            })
+            .catch(() => { });
     }, [router]);
 
     const handleLogout = () => {
@@ -79,7 +112,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </div>
 
                     {/* Navigation */}
-                    <nav className="flex-1 p-4 space-y-1">
+                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                         {navItems.map((item) => (
                             <Link
                                 key={item.href}
@@ -95,17 +128,49 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                                 {item.label}
                             </Link>
                         ))}
+
+                        {/* Admin Section */}
+                        {isAdmin && (
+                            <>
+                                <div className="pt-4 pb-2">
+                                    <p className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        Admin
+                                    </p>
+                                </div>
+                                {adminNavItems.map((item) => (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        className={cn(
+                                            'flex items-center gap-3 px-4 py-3 rounded-lg transition-all',
+                                            pathname === item.href || (item.href !== '/dashboard/admin' && pathname.startsWith(item.href))
+                                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25'
+                                                : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                                        )}
+                                    >
+                                        <item.icon className="w-5 h-5" />
+                                        {item.label}
+                                    </Link>
+                                ))}
+                            </>
+                        )}
                     </nav>
 
                     {/* User Section */}
                     <div className="p-4 border-t border-border">
                         <div className="flex items-center gap-3 px-4 py-2 mb-2">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-medium">
+                            <div className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium",
+                                isAdmin ? "bg-gradient-to-br from-purple-500 to-pink-600" : "bg-gradient-to-br from-indigo-500 to-purple-600"
+                            )}>
                                 {user?.name?.charAt(0) || user?.email?.charAt(0) || '?'}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
-                                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                    {isAdmin && <span className="text-purple-500 font-medium">Admin • </span>}
+                                    {user?.email}
+                                </p>
                             </div>
                         </div>
                         <Button
@@ -148,7 +213,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     <div className="w-10" /> {/* Spacer */}
                 </header>
 
-                <main className="flex-1 p-6 lg:p-8 overflow-auto">{children}</main>
+                <main className="flex-1 p-6 lg:p-8 overflow-auto">
+                    {/* Announcement Banner */}
+                    <div className="mb-6">
+                        <AnnouncementBanner />
+                    </div>
+                    {children}
+                </main>
             </div>
         </div>
     );
