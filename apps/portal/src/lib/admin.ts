@@ -4,6 +4,7 @@
  * - User Management
  * - System Maintenance (Rolling Updates)
  * - Announcements
+ * - Scheduled Maintenance
  */
 
 import { api } from "./api";
@@ -82,6 +83,38 @@ export interface AdminTenant {
 	};
 }
 
+export interface ScheduledMaintenance {
+	id: string;
+	scheduledAt: string;
+	targetImage: string;
+	status: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
+	forceUpdate: boolean;
+	startedAt: string | null;
+	completedAt: string | null;
+	servicesUpdated: string | null;
+	errors: string | null;
+	announcementId: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CreateScheduledMaintenancePayload {
+	scheduledAt: string;
+	targetImage: string;
+	forceUpdate?: boolean;
+	announcementId?: string;
+}
+
+export interface MaintenanceStatus {
+	isActive: boolean;
+	startedAt?: string;
+	targetImage?: string;
+	announcement?: {
+		title: string;
+		message: string;
+	} | null;
+}
+
 // ============ Admin Service ============
 
 export const adminService = {
@@ -123,6 +156,31 @@ export const adminService = {
 			image,
 			forceUpdate,
 		}),
+
+	// -------- Scheduled Maintenance --------
+	/**
+	 * Create scheduled maintenance
+	 */
+	createScheduledMaintenance: (data: CreateScheduledMaintenancePayload) =>
+		api.post<ScheduledMaintenance>("/admin/maintenance/schedule", data),
+
+	/**
+	 * Get all scheduled maintenances
+	 */
+	getScheduledMaintenances: () =>
+		api.get<ScheduledMaintenance[]>("/admin/maintenance/schedule"),
+
+	/**
+	 * Cancel scheduled maintenance
+	 */
+	cancelScheduledMaintenance: (id: string) =>
+		api.delete(`/admin/maintenance/schedule/${id}`),
+
+	/**
+	 * Manually execute scheduled maintenance
+	 */
+	executeScheduledMaintenance: (id: string) =>
+		api.post<RollingUpdateResult>(`/admin/maintenance/schedule/${id}/execute`),
 
 	// -------- Announcements --------
 	/**
@@ -166,4 +224,13 @@ export const adminService = {
 		api.post<{ success: boolean; replicas: number }>(`/tenants/${tenantId}/scale`, {
 			replicas,
 		}),
+};
+
+// ============ Public API (no auth required) ============
+
+export const publicMaintenanceService = {
+	/**
+	 * Check if maintenance is currently active
+	 */
+	getMaintenanceStatus: () => api.get<MaintenanceStatus>("/maintenance/status"),
 };

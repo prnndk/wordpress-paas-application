@@ -21,6 +21,9 @@ import ScrollToTop from "./components/ScrollToTop";
 import { PublicLayout } from "./components/PublicLayout";
 import { DashboardLayout } from "./components/DashboardLayout";
 
+// Modals
+import { MaintenancePopup } from "./components/modals/MaintenancePopup";
+
 // Public Pages
 import { LandingPage } from "./components/pages/LandingPage";
 import { LoginPage } from "./components/pages/LoginPage";
@@ -69,6 +72,7 @@ const App: React.FC = () => {
 		<AuthProvider>
 			<Router>
 				<ScrollToTop />
+				<MaintenancePopup />
 				<Routes>
 					{/* --- Public Routes (Wrapped in PublicLayout) --- */}
 					<Route element={<PublicLayout />}>
