@@ -394,20 +394,10 @@ export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
 	const formData = new FormData();
 	formData.append("file", file);
 
-	const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:3001";
-
-	const response = await fetch(`${baseUrl}/auth/avatar`, {
-		method: "POST",
-		credentials: "include", // Include cookies for authentication
-		body: formData,
-	});
-
-	if (!response.ok) {
-		const error = await response.json().catch(() => ({}));
-		throw new Error(error.message || "Failed to upload avatar");
-	}
-
-	const result = await response.json();
+	const result = await api.upload<{ avatarUrl: string }>(
+		"/auth/avatar",
+		formData
+	);
 
 	// Refresh cached profile after upload
 	await refreshProfile([]);

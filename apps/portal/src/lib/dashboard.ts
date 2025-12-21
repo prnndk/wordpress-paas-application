@@ -120,7 +120,30 @@ export interface DashboardMetrics {
 	estimatedCost: number;
 }
 
+export interface ScheduledMaintenance {
+	id: string;
+	scheduledAt: string;
+	targetImage: string;
+	status: string;
+	targetTenantIds?: string | null;
+	announcement?: {
+		id: string;
+		title: string;
+		message: string;
+		type: "info" | "warning" | "maintenance";
+		scheduledAt?: string;
+		expiresAt?: string;
+		isActive: boolean;
+	} | null;
+}
+
 export const dashboardService = {
+	/**
+	 * Get upcoming scheduled maintenances
+	 */
+	getUpcomingMaintenance: () =>
+		api.get<ScheduledMaintenance[]>("/maintenance/upcoming"),
+
 	/**
 	 * Get all tenants for current user
 	 */

@@ -9,7 +9,11 @@ import {
 	type AuditSummary,
 } from "../../src/lib/auth";
 import { adminService, type AdminStats } from "../../src/lib/admin";
-import { dashboardService } from "../../src/lib/dashboard";
+import {
+	dashboardService,
+	type ScheduledMaintenance,
+} from "../../src/lib/dashboard";
+import { announcementService } from "../../src/lib/announcements";
 import { AuditLogModal } from "../modals/AuditLogModal";
 import {
 	Plus,
@@ -35,24 +39,8 @@ import {
 	Bell,
 } from "lucide-react";
 
-interface Announcement {
-	id: string;
-	title: string;
-	message: string;
-	type: 'info' | 'warning' | 'maintenance';
-	scheduledAt?: string;
-	expiresAt?: string;
-	isActive: boolean;
-}
-
-interface ScheduledMaintenance {
-	id: string;
-	scheduledAt: string;
-	targetImage: string;
-	status: string;
-	targetTenantIds?: string | null;
-	announcement?: Announcement | null;
-}
+// Use type from dashboard service
+import type { Announcement } from "../../src/lib/admin";
 
 export const DashboardHome: React.FC = () => {
 	const navigate = useNavigate();
@@ -75,13 +63,21 @@ export const DashboardHome: React.FC = () => {
 	const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 	const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 	const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-	const [upcomingMaintenance, setUpcomingMaintenance] = useState<ScheduledMaintenance[]>([]);
-	const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
+	const [upcomingMaintenance, setUpcomingMaintenance] = useState<
+		ScheduledMaintenance[]
+	>([]);
+	const [dismissedAnnouncements, setDismissedAnnouncements] = useState<
+		string[]
+	>([]);
 	const [maintenanceLoading, setMaintenanceLoading] = useState(true);
-	const [showMaintenanceDetail, setShowMaintenanceDetail] = useState<ScheduledMaintenance | null>(null);
-	const [showAnnouncementDetail, setShowAnnouncementDetail] = useState<Announcement | null>(null);
+	const [showMaintenanceDetail, setShowMaintenanceDetail] =
+		useState<ScheduledMaintenance | null>(null);
+	const [showAnnouncementDetail, setShowAnnouncementDetail] =
+		useState<Announcement | null>(null);
 	const [countdown, setCountdown] = useState<string>("");
-	const [announcementCountdowns, setAnnouncementCountdowns] = useState<Record<string, string>>({});
+	const [announcementCountdowns, setAnnouncementCountdowns] = useState<
+		Record<string, string>
+	>({});
 	const [isDataReady, setIsDataReady] = useState(false);
 	const isAdmin = authUser?.roles?.includes("admin");
 
@@ -106,7 +102,6 @@ export const DashboardHome: React.FC = () => {
 			return () => clearTimeout(timer);
 		}
 	}, [loading, maintenanceLoading]);
-
 
 	// Fetch data from cached profile or refresh
 	useEffect(() => {
@@ -150,7 +145,7 @@ export const DashboardHome: React.FC = () => {
 		try {
 			setMetricsLoading(true);
 			// Aggregate metrics from all running instances
-			const runningInstances = instances.filter(i => i.status === "running");
+			const runningInstances = instances.filter((i) => i.status === "running");
 			let totalCpu = 0;
 			let totalMemory = 0;
 			let totalContainers = 0;
@@ -179,7 +174,13 @@ export const DashboardHome: React.FC = () => {
 				}
 			});
 
-			setLiveMetrics({ totalCpu, totalMemory, totalContainers, networkRx, networkTx });
+			setLiveMetrics({
+				totalCpu,
+				totalMemory,
+				totalContainers,
+				networkRx,
+				networkTx,
+			});
 		} catch (error) {
 			console.error("Failed to fetch live metrics:", error);
 		} finally {
@@ -198,21 +199,14 @@ export const DashboardHome: React.FC = () => {
 		async function fetchMaintenanceData() {
 			setMaintenanceLoading(true);
 			try {
-				const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001";
+				// Fetch announcements using service
+				const announcementsData =
+					await announcementService.getActiveAnnouncements();
+				setAnnouncements(announcementsData);
 
-				// Fetch announcements
-				const announcementsRes = await fetch(`${API_BASE}/announcements`);
-				if (announcementsRes.ok) {
-					const data = await announcementsRes.json();
-					setAnnouncements(data);
-				}
-
-				// Fetch upcoming maintenances
-				const maintenanceRes = await fetch(`${API_BASE}/maintenance/upcoming`);
-				if (maintenanceRes.ok) {
-					const data = await maintenanceRes.json();
-					setUpcomingMaintenance(data);
-				}
+				// Fetch upcoming maintenances using service
+				const maintenanceData = await dashboardService.getUpcomingMaintenance();
+				setUpcomingMaintenance(maintenanceData);
 			} catch (error) {
 				console.error("Failed to fetch maintenance data:", error);
 			} finally {
@@ -223,7 +217,7 @@ export const DashboardHome: React.FC = () => {
 	}, []);
 
 	const dismissAnnouncement = (id: string) => {
-		setDismissedAnnouncements(prev => [...prev, id]);
+		setDismissedAnnouncements((prev) => [...prev, id]);
 	};
 
 	// Calculate time remaining with live countdown
@@ -260,12 +254,14 @@ export const DashboardHome: React.FC = () => {
 
 	// Live countdown timer for announcements with scheduledAt
 	useEffect(() => {
-		const maintenanceAnnouncements = announcements.filter(a => a.type === 'maintenance' && a.scheduledAt);
+		const maintenanceAnnouncements = announcements.filter(
+			(a) => a.type === "maintenance" && a.scheduledAt
+		);
 		if (maintenanceAnnouncements.length === 0) return;
 
 		const updateCountdowns = () => {
 			const newCountdowns: Record<string, string> = {};
-			maintenanceAnnouncements.forEach(a => {
+			maintenanceAnnouncements.forEach((a) => {
 				if (a.scheduledAt) {
 					newCountdowns[a.id] = getCountdownValue(a.scheduledAt);
 				}
@@ -375,55 +371,59 @@ export const DashboardHome: React.FC = () => {
 	// Loading Skeleton
 	if (!isDataReady) {
 		return (
-			<div className="bg-slate-50/50 min-h-screen space-y-8 pb-10 animate-pulse">
+			<div className='bg-slate-50/50 min-h-screen space-y-8 pb-10 animate-pulse'>
 				{/* Welcome Banner Skeleton */}
-				<div className="rounded-2xl bg-white border border-slate-200 h-[240px] relative overflow-hidden p-8 flex flex-col justify-center gap-4">
-					<div className="h-8 bg-slate-200 rounded-lg w-1/3"></div>
-					<div className="h-4 bg-slate-200 rounded-lg w-1/2"></div>
-					<div className="flex gap-3 mt-4">
-						<div className="h-10 w-40 bg-slate-200 rounded-lg"></div>
-						<div className="h-10 w-40 bg-slate-200 rounded-lg"></div>
+				<div className='rounded-2xl bg-white border border-slate-200 h-[240px] relative overflow-hidden p-8 flex flex-col justify-center gap-4'>
+					<div className='h-8 bg-slate-200 rounded-lg w-1/3'></div>
+					<div className='h-4 bg-slate-200 rounded-lg w-1/2'></div>
+					<div className='flex gap-3 mt-4'>
+						<div className='h-10 w-40 bg-slate-200 rounded-lg'></div>
+						<div className='h-10 w-40 bg-slate-200 rounded-lg'></div>
 					</div>
 				</div>
 
 				{/* Stats Grid Skeleton */}
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+				<div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
 					{[1, 2, 3].map((i) => (
-						<div key={i} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-44 flex flex-col justify-between">
-							<div className="flex justify-between items-start">
-								<div className="w-12 h-12 bg-slate-200 rounded-xl"></div>
-								<div className="w-24 h-6 bg-slate-200 rounded-full"></div>
+						<div
+							key={i}
+							className='bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-44 flex flex-col justify-between'>
+							<div className='flex justify-between items-start'>
+								<div className='w-12 h-12 bg-slate-200 rounded-xl'></div>
+								<div className='w-24 h-6 bg-slate-200 rounded-full'></div>
 							</div>
-							<div className="space-y-2">
-								<div className="h-4 w-24 bg-slate-200 rounded"></div>
-								<div className="h-8 w-16 bg-slate-200 rounded"></div>
+							<div className='space-y-2'>
+								<div className='h-4 w-24 bg-slate-200 rounded'></div>
+								<div className='h-8 w-16 bg-slate-200 rounded'></div>
 							</div>
 						</div>
 					))}
 				</div>
 
 				{/* Main Content Skeleton */}
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-					<div className="lg:col-span-2 space-y-6">
-						<div className="bg-white rounded-xl border border-slate-200 shadow-sm h-[500px] p-6">
-							<div className="flex justify-between mb-8">
-								<div className="h-6 w-48 bg-slate-200 rounded"></div>
-								<div className="h-8 w-32 bg-slate-200 rounded"></div>
+				<div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>
+					<div className='lg:col-span-2 space-y-6'>
+						<div className='bg-white rounded-xl border border-slate-200 shadow-sm h-[500px] p-6'>
+							<div className='flex justify-between mb-8'>
+								<div className='h-6 w-48 bg-slate-200 rounded'></div>
+								<div className='h-8 w-32 bg-slate-200 rounded'></div>
 							</div>
-							<div className="space-y-4">
+							<div className='space-y-4'>
 								{[1, 2, 3, 4].map((i) => (
-									<div key={i} className="h-20 bg-slate-50 rounded-xl border border-slate-100"></div>
+									<div
+										key={i}
+										className='h-20 bg-slate-50 rounded-xl border border-slate-100'></div>
 								))}
 							</div>
 						</div>
 					</div>
-					<div className="space-y-6">
-						<div className="bg-white rounded-xl border border-slate-200 shadow-sm h-64 p-6">
-							<div className="h-6 w-32 bg-slate-200 rounded mb-4"></div>
-							<div className="space-y-3">
-								<div className="h-12 bg-slate-50 rounded-lg"></div>
-								<div className="h-12 bg-slate-50 rounded-lg"></div>
-								<div className="h-12 bg-slate-50 rounded-lg"></div>
+					<div className='space-y-6'>
+						<div className='bg-white rounded-xl border border-slate-200 shadow-sm h-64 p-6'>
+							<div className='h-6 w-32 bg-slate-200 rounded mb-4'></div>
+							<div className='space-y-3'>
+								<div className='h-12 bg-slate-50 rounded-lg'></div>
+								<div className='h-12 bg-slate-50 rounded-lg'></div>
+								<div className='h-12 bg-slate-50 rounded-lg'></div>
 							</div>
 						</div>
 					</div>
@@ -441,239 +441,343 @@ export const DashboardHome: React.FC = () => {
 			/>
 
 			{/* Maintenance Announcements Banner - Only show when loaded */}
-			{!maintenanceLoading && (announcements.filter(a => !dismissedAnnouncements.includes(a.id)).length > 0 || upcomingMaintenance.length > 0) && (
-				<div className="space-y-3">
-					{/* Active Announcements */}
-					{announcements
-						.filter(a => !dismissedAnnouncements.includes(a.id))
-						.map(announcement => {
-							const hasSchedule = announcement.type === 'maintenance' && announcement.scheduledAt;
-							const isToday = hasSchedule && isMaintenanceToday(announcement.scheduledAt!);
-							const theCountdown = hasSchedule ? announcementCountdowns[announcement.id] : null;
+			{!maintenanceLoading &&
+				(announcements.filter((a) => !dismissedAnnouncements.includes(a.id))
+					.length > 0 ||
+					upcomingMaintenance.length > 0) && (
+					<div className='space-y-3'>
+						{/* Active Announcements */}
+						{announcements
+							.filter((a) => !dismissedAnnouncements.includes(a.id))
+							.map((announcement) => {
+								const hasSchedule =
+									announcement.type === "maintenance" &&
+									announcement.scheduledAt;
+								const isToday =
+									hasSchedule && isMaintenanceToday(announcement.scheduledAt!);
+								const theCountdown = hasSchedule
+									? announcementCountdowns[announcement.id]
+									: null;
 
-							return (
-								<div
-									key={announcement.id}
-									onClick={() => setShowAnnouncementDetail(announcement)}
-									className={`relative rounded-xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${announcement.type === 'warning'
-										? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300'
-										: announcement.type === 'maintenance'
-											? isToday
-												? 'bg-gradient-to-r from-red-100 to-rose-100 border-red-300 hover:border-red-400'
-												: 'bg-gradient-to-r from-red-50 to-rose-50 border-red-200 hover:border-red-300'
-											: 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300'
-										}`}
-								>
-									<div className="flex items-stretch">
-										{/* Main Content */}
-										<div className="flex-1 p-4 flex items-start gap-4">
-											<div className={`p-2.5 rounded-xl ${announcement.type === 'warning'
-												? 'bg-amber-100 text-amber-600'
-												: announcement.type === 'maintenance'
-													? isToday ? 'bg-red-200 text-red-700 animate-pulse' : 'bg-red-100 text-red-600'
-													: 'bg-blue-100 text-blue-600'
-												}`}>
-												{announcement.type === 'maintenance' ? (
-													isToday ? <AlertTriangle className="w-5 h-5" /> : <Wrench className="w-5 h-5" />
-												) : announcement.type === 'warning' ? (
-													<AlertTriangle className="w-5 h-5" />
-												) : (
-													<Bell className="w-5 h-5" />
-												)}
-											</div>
-											<div className="flex-1">
-												<div className="flex items-center gap-2 mb-1 flex-wrap">
-													<h3 className={`font-bold ${announcement.type === 'warning'
-														? 'text-amber-900'
-														: announcement.type === 'maintenance'
-															? 'text-red-900'
-															: 'text-blue-900'
-														}`}>
-														{isToday && '⚠️ '}{announcement.title}
-													</h3>
-													<span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${announcement.type === 'warning'
-														? 'bg-amber-200 text-amber-800'
-														: announcement.type === 'maintenance'
-															? isToday ? 'bg-red-300 text-red-900 animate-pulse' : 'bg-red-200 text-red-800'
-															: 'bg-blue-200 text-blue-800'
-														}`}>
-														{isToday ? 'TODAY' : announcement.type}
-													</span>
-												</div>
-												<p className={`text-sm ${announcement.type === 'warning'
-													? 'text-amber-700'
-													: announcement.type === 'maintenance'
-														? 'text-red-700'
-														: 'text-blue-700'
+								return (
+									<div
+										key={announcement.id}
+										onClick={() => setShowAnnouncementDetail(announcement)}
+										className={`relative rounded-xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${
+											announcement.type === "warning"
+												? "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300"
+												: announcement.type === "maintenance"
+												? isToday
+													? "bg-gradient-to-r from-red-100 to-rose-100 border-red-300 hover:border-red-400"
+													: "bg-gradient-to-r from-red-50 to-rose-50 border-red-200 hover:border-red-300"
+												: "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300"
+										}`}>
+										<div className='flex items-stretch'>
+											{/* Main Content */}
+											<div className='flex-1 p-4 flex items-start gap-4'>
+												<div
+													className={`p-2.5 rounded-xl ${
+														announcement.type === "warning"
+															? "bg-amber-100 text-amber-600"
+															: announcement.type === "maintenance"
+															? isToday
+																? "bg-red-200 text-red-700 animate-pulse"
+																: "bg-red-100 text-red-600"
+															: "bg-blue-100 text-blue-600"
 													}`}>
-													{announcement.message}
-												</p>
-												{announcement.scheduledAt && !theCountdown && (
-													<p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
-														<Clock className="w-3 h-3" />
-														Scheduled: {new Date(announcement.scheduledAt).toLocaleString()}
+													{announcement.type === "maintenance" ? (
+														isToday ? (
+															<AlertTriangle className='w-5 h-5' />
+														) : (
+															<Wrench className='w-5 h-5' />
+														)
+													) : announcement.type === "warning" ? (
+														<AlertTriangle className='w-5 h-5' />
+													) : (
+														<Bell className='w-5 h-5' />
+													)}
+												</div>
+												<div className='flex-1'>
+													<div className='flex items-center gap-2 mb-1 flex-wrap'>
+														<h3
+															className={`font-bold ${
+																announcement.type === "warning"
+																	? "text-amber-900"
+																	: announcement.type === "maintenance"
+																	? "text-red-900"
+																	: "text-blue-900"
+															}`}>
+															{isToday && "⚠️ "}
+															{announcement.title}
+														</h3>
+														<span
+															className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${
+																announcement.type === "warning"
+																	? "bg-amber-200 text-amber-800"
+																	: announcement.type === "maintenance"
+																	? isToday
+																		? "bg-red-300 text-red-900 animate-pulse"
+																		: "bg-red-200 text-red-800"
+																	: "bg-blue-200 text-blue-800"
+															}`}>
+															{isToday ? "TODAY" : announcement.type}
+														</span>
+													</div>
+													<p
+														className={`text-sm ${
+															announcement.type === "warning"
+																? "text-amber-700"
+																: announcement.type === "maintenance"
+																? "text-red-700"
+																: "text-blue-700"
+														}`}>
+														{announcement.message}
 													</p>
-												)}
-												<p className={`text-xs mt-1 ${announcement.type === 'warning'
-													? 'text-amber-600'
-													: announcement.type === 'maintenance'
-														? 'text-red-600'
-														: 'text-blue-600'
-													}`}>Click to view details →</p>
-											</div>
-										</div>
-
-										{/* Countdown Timer for maintenance type */}
-										{theCountdown && (
-											<div className={`flex items-center justify-center px-4 border-l ${isToday ? 'bg-red-200/50 border-red-300' : 'bg-red-100/50 border-red-200'
-												}`}>
-												<div className="text-center">
-													<p className="text-[10px] text-red-600 uppercase font-medium mb-0.5">Starts in</p>
-													<p className={`font-mono font-bold tabular-nums ${isToday ? 'text-xl text-red-800' : 'text-lg text-red-700'}`}>
-														{theCountdown}
+													{announcement.scheduledAt && !theCountdown && (
+														<p className='text-xs text-slate-500 mt-2 flex items-center gap-1'>
+															<Clock className='w-3 h-3' />
+															Scheduled:{" "}
+															{new Date(
+																announcement.scheduledAt
+															).toLocaleString()}
+														</p>
+													)}
+													<p
+														className={`text-xs mt-1 ${
+															announcement.type === "warning"
+																? "text-amber-600"
+																: announcement.type === "maintenance"
+																? "text-red-600"
+																: "text-blue-600"
+														}`}>
+														Click to view details →
 													</p>
 												</div>
 											</div>
-										)}
 
-										{/* Dismiss Button */}
-										<div className="flex items-start p-2">
-											<button
-												onClick={(e) => {
-													e.stopPropagation();
-													dismissAnnouncement(announcement.id);
-												}}
-												className="p-1 hover:bg-white/50 rounded-lg transition-colors text-slate-400 hover:text-slate-600"
-											>
-												<X className="w-4 h-4" />
-											</button>
+											{/* Countdown Timer for maintenance type */}
+											{theCountdown && (
+												<div
+													className={`flex items-center justify-center px-4 border-l ${
+														isToday
+															? "bg-red-200/50 border-red-300"
+															: "bg-red-100/50 border-red-200"
+													}`}>
+													<div className='text-center'>
+														<p className='text-[10px] text-red-600 uppercase font-medium mb-0.5'>
+															Starts in
+														</p>
+														<p
+															className={`font-mono font-bold tabular-nums ${
+																isToday
+																	? "text-xl text-red-800"
+																	: "text-lg text-red-700"
+															}`}>
+															{theCountdown}
+														</p>
+													</div>
+												</div>
+											)}
+
+											{/* Dismiss Button */}
+											<div className='flex items-start p-2'>
+												<button
+													onClick={(e) => {
+														e.stopPropagation();
+														dismissAnnouncement(announcement.id);
+													}}
+													className='p-1 hover:bg-white/50 rounded-lg transition-colors text-slate-400 hover:text-slate-600'>
+													<X className='w-4 h-4' />
+												</button>
+											</div>
 										</div>
 									</div>
-								</div>
-							);
-						})}
+								);
+							})}
 
-					{/* Upcoming Scheduled Maintenance */}
-					{upcomingMaintenance.length > 0 && (
-						<div
-							className={`rounded-xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer transition-all ${isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
-								? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700'
-								: 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600'
+						{/* Upcoming Scheduled Maintenance */}
+						{upcomingMaintenance.length > 0 && (
+							<div
+								className={`rounded-xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer transition-all ${
+									isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
+										? "bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
+										: "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
 								}`}
-							onClick={() => setShowMaintenanceDetail(upcomingMaintenance[0])}
-						>
-							<div className="relative z-10 flex items-center justify-between">
-								<div className="flex items-center gap-4">
-									<div className={`p-3 bg-white/20 rounded-xl backdrop-blur-sm ${isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt) ? 'animate-pulse' : ''}`}>
-										{isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt) ? <AlertTriangle className="w-6 h-6" /> : <Wrench className="w-6 h-6" />}
-									</div>
-									<div>
-										<div className="flex items-center gap-2 mb-1">
-											<h3 className="font-bold text-lg">
-												{isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt) ? '⚠️ Maintenance Today!' : 'Scheduled Maintenance'}
-											</h3>
-											<span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt) ? 'bg-white/30 animate-pulse' : 'bg-white/20'}`}>
-												{isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt) ? 'Urgent' : `${upcomingMaintenance.length} Upcoming`}
-											</span>
+								onClick={() =>
+									setShowMaintenanceDetail(upcomingMaintenance[0])
+								}>
+								<div className='relative z-10 flex items-center justify-between'>
+									<div className='flex items-center gap-4'>
+										<div
+											className={`p-3 bg-white/20 rounded-xl backdrop-blur-sm ${
+												isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
+													? "animate-pulse"
+													: ""
+											}`}>
+											{isMaintenanceToday(
+												upcomingMaintenance[0]?.scheduledAt
+											) ? (
+												<AlertTriangle className='w-6 h-6' />
+											) : (
+												<Wrench className='w-6 h-6' />
+											)}
 										</div>
-										<p className="text-orange-100 text-sm">
-											{upcomingMaintenance[0]?.announcement?.message ||
-												`System maintenance scheduled for ${new Date(upcomingMaintenance[0]?.scheduledAt).toLocaleString()}`}
-										</p>
-										<p className="text-xs text-orange-200 mt-1">Click to view affected tenants →</p>
+										<div>
+											<div className='flex items-center gap-2 mb-1'>
+												<h3 className='font-bold text-lg'>
+													{isMaintenanceToday(
+														upcomingMaintenance[0]?.scheduledAt
+													)
+														? "⚠️ Maintenance Today!"
+														: "Scheduled Maintenance"}
+												</h3>
+												<span
+													className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
+														isMaintenanceToday(
+															upcomingMaintenance[0]?.scheduledAt
+														)
+															? "bg-white/30 animate-pulse"
+															: "bg-white/20"
+													}`}>
+													{isMaintenanceToday(
+														upcomingMaintenance[0]?.scheduledAt
+													)
+														? "Urgent"
+														: `${upcomingMaintenance.length} Upcoming`}
+												</span>
+											</div>
+											<p className='text-orange-100 text-sm'>
+												{upcomingMaintenance[0]?.announcement?.message ||
+													`System maintenance scheduled for ${new Date(
+														upcomingMaintenance[0]?.scheduledAt
+													).toLocaleString()}`}
+											</p>
+											<p className='text-xs text-orange-200 mt-1'>
+												Click to view affected tenants →
+											</p>
+										</div>
+									</div>
+									<div className='text-right'>
+										<p className='text-xs text-orange-200 mb-1'>Starts in</p>
+										<div className='bg-white/20 rounded-lg px-4 py-2 backdrop-blur-sm'>
+											<p
+												className={`font-mono font-bold tabular-nums ${
+													isMaintenanceToday(
+														upcomingMaintenance[0]?.scheduledAt
+													)
+														? "text-3xl"
+														: "text-2xl"
+												}`}>
+												{countdown || "Loading..."}
+											</p>
+										</div>
 									</div>
 								</div>
-								<div className="text-right">
-									<p className="text-xs text-orange-200 mb-1">Starts in</p>
-									<div className="bg-white/20 rounded-lg px-4 py-2 backdrop-blur-sm">
-										<p className={`font-mono font-bold tabular-nums ${isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt) ? 'text-3xl' : 'text-2xl'}`}>
-											{countdown || 'Loading...'}
-										</p>
-									</div>
-								</div>
+								{/* Decorative elements */}
+								<div className='absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-2xl' />
+								<div className='absolute -left-10 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl' />
 							</div>
-							{/* Decorative elements */}
-							<div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
-							<div className="absolute -left-10 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
-						</div>
-					)}
-				</div>
-			)}
+						)}
+					</div>
+				)}
 
 			{/* Maintenance Detail Modal */}
 			{showMaintenanceDetail && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowMaintenanceDetail(null)}>
-					<div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-						<div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-orange-500 to-red-500 rounded-t-2xl text-white">
+				<div
+					className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm'
+					onClick={() => setShowMaintenanceDetail(null)}>
+					<div
+						className='bg-white rounded-2xl shadow-2xl w-full max-w-lg'
+						onClick={(e) => e.stopPropagation()}>
+						<div className='px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-orange-500 to-red-500 rounded-t-2xl text-white'>
 							<div>
-								<h2 className="text-lg font-bold">Maintenance Details</h2>
-								<p className="text-sm text-orange-100">
-									Scheduled for {new Date(showMaintenanceDetail.scheduledAt).toLocaleString()}
+								<h2 className='text-lg font-bold'>Maintenance Details</h2>
+								<p className='text-sm text-orange-100'>
+									Scheduled for{" "}
+									{new Date(showMaintenanceDetail.scheduledAt).toLocaleString()}
 								</p>
 							</div>
-							<button onClick={() => setShowMaintenanceDetail(null)} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
-								<X className="w-5 h-5" />
+							<button
+								onClick={() => setShowMaintenanceDetail(null)}
+								className='p-2 hover:bg-white/20 rounded-lg transition-colors'>
+								<X className='w-5 h-5' />
 							</button>
 						</div>
-						<div className="p-6 space-y-4">
+						<div className='p-6 space-y-4'>
 							{/* Countdown */}
-							<div className="bg-gradient-to-r from-slate-100 to-slate-50 rounded-xl p-4 text-center">
-								<p className="text-xs text-slate-500 mb-1">Starts in</p>
-								<p className="text-3xl font-mono font-bold text-slate-900 tabular-nums">{countdown}</p>
+							<div className='bg-gradient-to-r from-slate-100 to-slate-50 rounded-xl p-4 text-center'>
+								<p className='text-xs text-slate-500 mb-1'>Starts in</p>
+								<p className='text-3xl font-mono font-bold text-slate-900 tabular-nums'>
+									{countdown}
+								</p>
 							</div>
 
 							{/* Message */}
 							{showMaintenanceDetail.announcement && (
 								<div>
-									<h4 className="text-sm font-medium text-slate-500 mb-1">Announcement</h4>
-									<p className="text-slate-900">{showMaintenanceDetail.announcement.message}</p>
+									<h4 className='text-sm font-medium text-slate-500 mb-1'>
+										Announcement
+									</h4>
+									<p className='text-slate-900'>
+										{showMaintenanceDetail.announcement.message}
+									</p>
 								</div>
 							)}
 
 							{/* Affected Tenants */}
 							<div>
-								<h4 className="text-sm font-medium text-slate-500 mb-2">Affected Tenants</h4>
+								<h4 className='text-sm font-medium text-slate-500 mb-2'>
+									Affected Tenants
+								</h4>
 								{(() => {
 									const affected = getAffectedTenants(showMaintenanceDetail);
 									if (!affected) {
 										return (
-											<div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm">
-												⚠️ <strong>All tenants</strong> will be affected by this maintenance.
+											<div className='bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm'>
+												⚠️ <strong>All tenants</strong> will be affected by this
+												maintenance.
 											</div>
 										);
 									}
-									const matchingInstances = instances.filter(i => affected.includes(i.id));
+									const matchingInstances = instances.filter((i) =>
+										affected.includes(i.id)
+									);
 									if (matchingInstances.length === 0) {
 										return (
-											<div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-800 text-sm">
-												✅ None of your instances are affected by this maintenance.
+											<div className='bg-green-50 border border-green-200 rounded-lg p-3 text-green-800 text-sm'>
+												✅ None of your instances are affected by this
+												maintenance.
 											</div>
 										);
 									}
 									return (
-										<div className="space-y-2">
-											<div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-800 text-sm mb-2">
-												⚠️ <strong>{matchingInstances.length}</strong> of your instances will be affected:
+										<div className='space-y-2'>
+											<div className='bg-red-50 border border-red-200 rounded-lg p-3 text-red-800 text-sm mb-2'>
+												⚠️ <strong>{matchingInstances.length}</strong> of your
+												instances will be affected:
 											</div>
-											{matchingInstances.map(inst => (
+											{matchingInstances.map((inst) => (
 												<div
 													key={inst.id}
-													className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
+													className='flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors'
 													onClick={() => {
 														setShowMaintenanceDetail(null);
 														navigate(`/instance/${inst.id}`);
-													}}
-												>
-													<div className="flex items-center gap-3">
-														<div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-xs font-bold">
+													}}>
+													<div className='flex items-center gap-3'>
+														<div className='w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-xs font-bold'>
 															WP
 														</div>
 														<div>
-															<p className="font-medium text-slate-900">{inst.name}</p>
-															<p className="text-xs text-slate-500">{inst.slug}</p>
+															<p className='font-medium text-slate-900'>
+																{inst.name}
+															</p>
+															<p className='text-xs text-slate-500'>
+																{inst.slug}
+															</p>
 														</div>
 													</div>
-													<ChevronRight className="w-4 h-4 text-slate-400" />
+													<ChevronRight className='w-4 h-4 text-slate-400' />
 												</div>
 											))}
 										</div>
@@ -681,11 +785,10 @@ export const DashboardHome: React.FC = () => {
 								})()}
 							</div>
 						</div>
-						<div className="px-6 py-4 border-t border-slate-200 flex justify-end">
+						<div className='px-6 py-4 border-t border-slate-200 flex justify-end'>
 							<button
 								onClick={() => setShowMaintenanceDetail(null)}
-								className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-							>
+								className='px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors'>
 								Close
 							</button>
 						</div>
@@ -695,100 +798,139 @@ export const DashboardHome: React.FC = () => {
 
 			{/* Announcement Detail Modal */}
 			{showAnnouncementDetail && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAnnouncementDetail(null)}>
-					<div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-						<div className={`px-6 py-4 border-b flex items-center justify-between rounded-t-2xl text-white ${showAnnouncementDetail.type === 'warning'
-							? 'bg-gradient-to-r from-amber-500 to-orange-500'
-							: showAnnouncementDetail.type === 'maintenance'
-								? showAnnouncementDetail.scheduledAt && isMaintenanceToday(showAnnouncementDetail.scheduledAt)
-									? 'bg-gradient-to-r from-red-600 to-rose-600'
-									: 'bg-gradient-to-r from-orange-500 to-red-500'
-								: 'bg-gradient-to-r from-blue-500 to-indigo-500'
+				<div
+					className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm'
+					onClick={() => setShowAnnouncementDetail(null)}>
+					<div
+						className='bg-white rounded-2xl shadow-2xl w-full max-w-lg'
+						onClick={(e) => e.stopPropagation()}>
+						<div
+							className={`px-6 py-4 border-b flex items-center justify-between rounded-t-2xl text-white ${
+								showAnnouncementDetail.type === "warning"
+									? "bg-gradient-to-r from-amber-500 to-orange-500"
+									: showAnnouncementDetail.type === "maintenance"
+									? showAnnouncementDetail.scheduledAt &&
+									  isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+										? "bg-gradient-to-r from-red-600 to-rose-600"
+										: "bg-gradient-to-r from-orange-500 to-red-500"
+									: "bg-gradient-to-r from-blue-500 to-indigo-500"
 							}`}>
-							<div className="flex items-center gap-3">
-								<div className="p-2 bg-white/20 rounded-lg">
-									{showAnnouncementDetail.type === 'maintenance' ? (
-										showAnnouncementDetail.scheduledAt && isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? (
-											<AlertTriangle className="w-5 h-5" />
+							<div className='flex items-center gap-3'>
+								<div className='p-2 bg-white/20 rounded-lg'>
+									{showAnnouncementDetail.type === "maintenance" ? (
+										showAnnouncementDetail.scheduledAt &&
+										isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? (
+											<AlertTriangle className='w-5 h-5' />
 										) : (
-											<Wrench className="w-5 h-5" />
+											<Wrench className='w-5 h-5' />
 										)
-									) : showAnnouncementDetail.type === 'warning' ? (
-										<AlertTriangle className="w-5 h-5" />
+									) : showAnnouncementDetail.type === "warning" ? (
+										<AlertTriangle className='w-5 h-5' />
 									) : (
-										<Bell className="w-5 h-5" />
+										<Bell className='w-5 h-5' />
 									)}
 								</div>
 								<div>
-									<div className="flex items-center gap-2">
-										<h2 className="text-lg font-bold">{showAnnouncementDetail.title}</h2>
-										<span className="px-2 py-0.5 rounded-full text-xs font-medium uppercase bg-white/20">
+									<div className='flex items-center gap-2'>
+										<h2 className='text-lg font-bold'>
+											{showAnnouncementDetail.title}
+										</h2>
+										<span className='px-2 py-0.5 rounded-full text-xs font-medium uppercase bg-white/20'>
 											{showAnnouncementDetail.type}
 										</span>
 									</div>
 									{showAnnouncementDetail.scheduledAt && (
-										<p className="text-sm opacity-80">
-											Scheduled for {new Date(showAnnouncementDetail.scheduledAt).toLocaleString()}
+										<p className='text-sm opacity-80'>
+											Scheduled for{" "}
+											{new Date(
+												showAnnouncementDetail.scheduledAt
+											).toLocaleString()}
 										</p>
 									)}
 								</div>
 							</div>
-							<button onClick={() => setShowAnnouncementDetail(null)} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
-								<X className="w-5 h-5" />
+							<button
+								onClick={() => setShowAnnouncementDetail(null)}
+								className='p-2 hover:bg-white/20 rounded-lg transition-colors'>
+								<X className='w-5 h-5' />
 							</button>
 						</div>
-						<div className="p-6 space-y-4">
+						<div className='p-6 space-y-4'>
 							{/* Countdown - only for maintenance with scheduledAt */}
-							{showAnnouncementDetail.type === 'maintenance' && showAnnouncementDetail.scheduledAt && announcementCountdowns[showAnnouncementDetail.id] && (
-								<div className={`rounded-xl p-4 text-center ${isMaintenanceToday(showAnnouncementDetail.scheduledAt)
-									? 'bg-gradient-to-r from-red-100 to-rose-100'
-									: 'bg-gradient-to-r from-slate-100 to-slate-50'
-									}`}>
-									<p className={`text-xs mb-1 ${isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? 'text-red-600' : 'text-slate-500'}`}>
-										{isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? '⚠️ Starting Today in' : 'Starts in'}
-									</p>
-									<p className={`text-3xl font-mono font-bold tabular-nums ${isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? 'text-red-700' : 'text-slate-900'
+							{showAnnouncementDetail.type === "maintenance" &&
+								showAnnouncementDetail.scheduledAt &&
+								announcementCountdowns[showAnnouncementDetail.id] && (
+									<div
+										className={`rounded-xl p-4 text-center ${
+											isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+												? "bg-gradient-to-r from-red-100 to-rose-100"
+												: "bg-gradient-to-r from-slate-100 to-slate-50"
 										}`}>
-										{announcementCountdowns[showAnnouncementDetail.id]}
-									</p>
-								</div>
-							)}
+										<p
+											className={`text-xs mb-1 ${
+												isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+													? "text-red-600"
+													: "text-slate-500"
+											}`}>
+											{isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+												? "⚠️ Starting Today in"
+												: "Starts in"}
+										</p>
+										<p
+											className={`text-3xl font-mono font-bold tabular-nums ${
+												isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+													? "text-red-700"
+													: "text-slate-900"
+											}`}>
+											{announcementCountdowns[showAnnouncementDetail.id]}
+										</p>
+									</div>
+								)}
 
 							{/* Message */}
 							<div>
-								<h4 className="text-sm font-medium text-slate-500 mb-1">Details</h4>
-								<p className="text-slate-900">{showAnnouncementDetail.message}</p>
+								<h4 className='text-sm font-medium text-slate-500 mb-1'>
+									Details
+								</h4>
+								<p className='text-slate-900'>
+									{showAnnouncementDetail.message}
+								</p>
 							</div>
 
 							{/* Created Date */}
 							<div>
-								<h4 className="text-sm font-medium text-slate-500 mb-1">Posted</h4>
-								<p className="text-sm text-slate-600">
+								<h4 className='text-sm font-medium text-slate-500 mb-1'>
+									Posted
+								</h4>
+								<p className='text-sm text-slate-600'>
 									{showAnnouncementDetail.scheduledAt
-										? new Date(showAnnouncementDetail.scheduledAt).toLocaleString()
-										: 'Active now'}
+										? new Date(
+												showAnnouncementDetail.scheduledAt
+										  ).toLocaleString()
+										: "Active now"}
 								</p>
 							</div>
 
 							{/* Info Note based on type */}
-							<div className={`rounded-lg p-3 text-sm ${showAnnouncementDetail.type === 'warning'
-								? 'bg-amber-50 border border-amber-200 text-amber-800'
-								: showAnnouncementDetail.type === 'maintenance'
-									? 'bg-red-50 border border-red-200 text-red-800'
-									: 'bg-blue-50 border border-blue-200 text-blue-800'
+							<div
+								className={`rounded-lg p-3 text-sm ${
+									showAnnouncementDetail.type === "warning"
+										? "bg-amber-50 border border-amber-200 text-amber-800"
+										: showAnnouncementDetail.type === "maintenance"
+										? "bg-red-50 border border-red-200 text-red-800"
+										: "bg-blue-50 border border-blue-200 text-blue-800"
 								}`}>
-								{showAnnouncementDetail.type === 'maintenance'
-									? '🔧 This is a maintenance announcement. Services may be temporarily affected.'
-									: showAnnouncementDetail.type === 'warning'
-										? '⚠️ This is a warning notice. Please review the details carefully.'
-										: 'ℹ️ This is an informational announcement from the system administrators.'}
+								{showAnnouncementDetail.type === "maintenance"
+									? "🔧 This is a maintenance announcement. Services may be temporarily affected."
+									: showAnnouncementDetail.type === "warning"
+									? "⚠️ This is a warning notice. Please review the details carefully."
+									: "ℹ️ This is an informational announcement from the system administrators."}
 							</div>
 						</div>
-						<div className="px-6 py-4 border-t border-slate-200 flex justify-end">
+						<div className='px-6 py-4 border-t border-slate-200 flex justify-end'>
 							<button
 								onClick={() => setShowAnnouncementDetail(null)}
-								className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-							>
+								className='px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors'>
 								Close
 							</button>
 						</div>
@@ -833,15 +975,17 @@ export const DashboardHome: React.FC = () => {
 							<Server className='w-6 h-6' />
 						</div>
 						<div
-							className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${activeCount > 0
-								? "bg-green-100 text-green-700"
-								: "bg-slate-100 text-slate-600"
-								}`}>
+							className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+								activeCount > 0
+									? "bg-green-100 text-green-700"
+									: "bg-slate-100 text-slate-600"
+							}`}>
 							<div
-								className={`w-1.5 h-1.5 rounded-full ${activeCount > 0
-									? "bg-green-500 animate-pulse"
-									: "bg-slate-400"
-									}`}></div>
+								className={`w-1.5 h-1.5 rounded-full ${
+									activeCount > 0
+										? "bg-green-500 animate-pulse"
+										: "bg-slate-400"
+								}`}></div>
 							{activeCount > 0 ? "System Online" : "No Active Services"}
 						</div>
 					</div>
@@ -1086,7 +1230,9 @@ export const DashboardHome: React.FC = () => {
 							</div>
 							<div>
 								<h3 className='text-lg font-bold text-white'>Live Usage</h3>
-								<p className='text-sm text-slate-400'>Real-time metrics from Prometheus</p>
+								<p className='text-sm text-slate-400'>
+									Real-time metrics from Prometheus
+								</p>
 							</div>
 						</div>
 						{metricsLoading && (
@@ -1101,7 +1247,7 @@ export const DashboardHome: React.FC = () => {
 								<Cpu className='w-3.5 h-3.5' /> CPU USAGE
 							</div>
 							<p className='text-2xl font-bold text-white'>
-								{liveMetrics ? `${liveMetrics.totalCpu.toFixed(1)}%` : '--'}
+								{liveMetrics ? `${liveMetrics.totalCpu.toFixed(1)}%` : "--"}
 							</p>
 						</div>
 
@@ -1111,7 +1257,11 @@ export const DashboardHome: React.FC = () => {
 								<Server className='w-3.5 h-3.5' /> MEMORY
 							</div>
 							<p className='text-2xl font-bold text-white'>
-								{liveMetrics ? `${(liveMetrics.totalMemory / (1024 * 1024 * 1024)).toFixed(2)} GB` : '--'}
+								{liveMetrics
+									? `${(liveMetrics.totalMemory / (1024 * 1024 * 1024)).toFixed(
+											2
+									  )} GB`
+									: "--"}
 							</p>
 						</div>
 
@@ -1121,7 +1271,9 @@ export const DashboardHome: React.FC = () => {
 								<Wifi className='w-3.5 h-3.5' /> NET IN
 							</div>
 							<p className='text-2xl font-bold text-emerald-400'>
-								{liveMetrics ? `${(liveMetrics.networkRx / 1024).toFixed(1)} KB/s` : '--'}
+								{liveMetrics
+									? `${(liveMetrics.networkRx / 1024).toFixed(1)} KB/s`
+									: "--"}
 							</p>
 						</div>
 
@@ -1131,7 +1283,9 @@ export const DashboardHome: React.FC = () => {
 								<Wifi className='w-3.5 h-3.5' /> NET OUT
 							</div>
 							<p className='text-2xl font-bold text-blue-400'>
-								{liveMetrics ? `${(liveMetrics.networkTx / 1024).toFixed(1)} KB/s` : '--'}
+								{liveMetrics
+									? `${(liveMetrics.networkTx / 1024).toFixed(1)} KB/s`
+									: "--"}
 							</p>
 						</div>
 					</div>
@@ -1188,14 +1342,15 @@ export const DashboardHome: React.FC = () => {
 										onClick={() => navigate(`/instance/${inst.id}`)}>
 										<div className='flex items-center gap-4'>
 											<div
-												className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${inst.status === "running"
-													? "bg-green-100 text-green-700"
-													: inst.status === "provisioning"
+												className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${
+													inst.status === "running"
+														? "bg-green-100 text-green-700"
+														: inst.status === "provisioning"
 														? "bg-amber-100 text-amber-700"
 														: inst.status === "error"
-															? "bg-red-100 text-red-700"
-															: "bg-slate-100 text-slate-500"
-													}`}>
+														? "bg-red-100 text-red-700"
+														: "bg-slate-100 text-slate-500"
+												}`}>
 												WP
 											</div>
 											<div>
@@ -1225,12 +1380,13 @@ export const DashboardHome: React.FC = () => {
 												</div>
 											</div>
 											<div
-												className={`px-3 py-1 rounded-full text-xs font-bold capitalize border ${inst.status === "running"
-													? "bg-green-50 text-green-700 border-green-200"
-													: inst.status === "provisioning"
+												className={`px-3 py-1 rounded-full text-xs font-bold capitalize border ${
+													inst.status === "running"
+														? "bg-green-50 text-green-700 border-green-200"
+														: inst.status === "provisioning"
 														? "bg-amber-50 text-amber-700 border-amber-200"
 														: "bg-slate-50 text-slate-600 border-slate-200"
-													}`}>
+												}`}>
 												{inst.status}
 											</div>
 											<ChevronRight className='w-5 h-5 text-slate-300 group-hover:text-indigo-400 transition-colors' />
@@ -1354,12 +1510,13 @@ export const DashboardHome: React.FC = () => {
 									return (
 										<div key={log.id} className='relative pl-10 py-3 group'>
 											<div
-												className={`absolute left-0 top-3.5 w-[10px] h-[10px] rounded-full border-2 border-white ring-1 z-10 ${log.level === "error"
-													? "bg-red-500 ring-red-100"
-													: log.level === "warn"
+												className={`absolute left-0 top-3.5 w-[10px] h-[10px] rounded-full border-2 border-white ring-1 z-10 ${
+													log.level === "error"
+														? "bg-red-500 ring-red-100"
+														: log.level === "warn"
 														? "bg-amber-500 ring-amber-100"
 														: "bg-indigo-500 ring-indigo-100"
-													}`}></div>
+												}`}></div>
 											<div className='bg-white p-3 rounded-lg border border-slate-100 shadow-sm group-hover:border-indigo-100 group-hover:shadow-md transition-all'>
 												<p className='text-sm text-slate-900 font-semibold leading-tight'>
 													{formatted.action}

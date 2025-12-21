@@ -35,7 +35,7 @@ async function request<T>(
 		const response = await fetch(url, {
 			...options,
 			headers,
-			credentials: "include", // Essential for sending/receiving cookies
+			credentials: "include",
 		});
 
 		if (!response.ok) {
@@ -88,6 +88,42 @@ export const api = {
 		}),
 
 	delete: <T>(endpoint: string) => request<T>(endpoint, { method: "DELETE" }),
+
+	/**
+	 * Upload a file using FormData
+	 * Does not set Content-Type header - browser will set it automatically with boundary
+	 */
+	upload: async <T>(endpoint: string, formData: FormData): Promise<T> => {
+		const url = `${BASE_URL}${endpoint}`;
+
+		try {
+			const response = await fetch(url, {
+				method: "POST",
+				body: formData,
+				credentials: "include",
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				throw new ApiRequestError(
+					errorData.message ||
+						`HTTP ${response.status}: ${response.statusText}`,
+					response.status,
+					errorData
+				);
+			}
+
+			return response.json();
+		} catch (error) {
+			if (error instanceof ApiRequestError) {
+				throw error;
+			}
+			throw new ApiRequestError(
+				error instanceof Error ? error.message : "Upload failed",
+				0
+			);
+		}
+	},
 };
 
 /**
