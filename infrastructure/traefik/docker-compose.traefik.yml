@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v2.11
     hostname: traefik
     command:
       - "--configFile=/etc/traefik/traefik.yml"
@@ -16,6 +16,10 @@ services:
         mode: host
       - target: 443
         published: 443
+        protocol: tcp
+        mode: host
+      - target: 8080
+        published: 8080
         protocol: tcp
         mode: host
     volumes:
