@@ -29,9 +29,10 @@ export interface RegisterRequest {
 }
 
 // Backend response from /auth/login and /auth/register
+// Tokens are now set as httpOnly cookies, not returned in body
 export interface AuthResponse {
-	accessToken: string;
-	expiresIn: number; // seconds
+	success: boolean;
+	expiresIn: number; // Access token expiry in seconds
 }
 
 // Tenant specs

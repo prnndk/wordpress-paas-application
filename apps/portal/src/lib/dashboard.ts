@@ -65,6 +65,18 @@ export interface Tenant {
 		password: string;
 	};
 	storageUsage?: { bytes: number; files: number };
+	internal?: {
+		serviceId: string;
+		volumeName: string;
+		network: string;
+		nodeId?: string;
+	};
+	docker?: {
+		image: string;
+	};
+	user?: {
+		email: string;
+	};
 }
 
 /**
@@ -189,7 +201,12 @@ export const dashboardService = {
 		api.get<{
 			cpu: { current: number; avg: number; max: number };
 			memory: { current: number; limit: number; percent: number };
-			network: { rxBytes: number; txBytes: number; rxRate: number; txRate: number };
+			network: {
+				rxBytes: number;
+				txBytes: number;
+				rxRate: number;
+				txRate: number;
+			};
 			containerCount: number;
 			timestamp: string;
 		}>(`/monitoring/${id}/prometheus`),
@@ -390,11 +407,11 @@ export const dashboardService = {
 	}) => {
 		const queryString = params
 			? "?" +
-			new URLSearchParams(
-				Object.entries(params)
-					.filter(([_, v]) => v !== undefined)
-					.map(([k, v]) => [k, String(v)])
-			).toString()
+			  new URLSearchParams(
+					Object.entries(params)
+						.filter(([_, v]) => v !== undefined)
+						.map(([k, v]) => [k, String(v)])
+			  ).toString()
 			: "";
 		return api.get<AuditLog[]>(`/audit${queryString}`);
 	},

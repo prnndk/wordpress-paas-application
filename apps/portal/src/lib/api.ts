@@ -1,46 +1,10 @@
 /**
  * API Client for WordPress PaaS Orchestrator
- * Uses Bearer token authentication with localStorage persistence
+ * Uses httpOnly cookie-based authentication
  */
 
 const BASE_URL =
 	import.meta.env.VITE_ORCHESTRATOR_URL || "http://localhost:3001";
-const TOKEN_STORAGE_KEY = "wp_paas_token";
-
-// In-memory token storage (synced with localStorage)
-let accessToken: string | null = null;
-
-/**
- * Initialize token from localStorage on module load
- */
-function initToken(): void {
-	const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
-	if (stored) {
-		accessToken = stored;
-	}
-}
-
-// Auto-initialize
-initToken();
-
-/**
- * Set authentication token (stores in memory and localStorage)
- */
-export function setAuthToken(token: string | null): void {
-	accessToken = token;
-	if (token) {
-		localStorage.setItem(TOKEN_STORAGE_KEY, token);
-	} else {
-		localStorage.removeItem(TOKEN_STORAGE_KEY);
-	}
-}
-
-/**
- * Get current authentication token
- */
-export function getAuthToken(): string | null {
-	return accessToken;
-}
 
 /**
  * Custom error class for API request failures
@@ -54,6 +18,7 @@ export class ApiRequestError extends Error {
 
 /**
  * Make an HTTP request to the API
+ * Cookies are automatically sent with credentials: 'include'
  */
 async function request<T>(
 	endpoint: string,
@@ -66,15 +31,11 @@ async function request<T>(
 		...options.headers,
 	};
 
-	// Add Authorization header if token exists
-	if (accessToken) {
-		headers["Authorization"] = `Bearer ${accessToken}`;
-	}
-
 	try {
 		const response = await fetch(url, {
 			...options,
 			headers,
+			credentials: "include", // Essential for sending/receiving cookies
 		});
 
 		if (!response.ok) {
@@ -128,3 +89,52 @@ export const api = {
 
 	delete: <T>(endpoint: string) => request<T>(endpoint, { method: "DELETE" }),
 };
+
+/**
+ * @deprecated Token management functions are no longer needed with httpOnly cookies
+ * These are kept as stubs for backward compatibility during migration
+ */
+export function setAuthToken(_token: string | null): void {
+	// No-op: Tokens are now managed via httpOnly cookies
+	console.warn(
+		"setAuthToken is deprecated. Tokens are now managed via httpOnly cookies."
+	);
+}
+
+export function getAuthToken(): string | null {
+	// Cannot access httpOnly cookies from JavaScript
+	// Return null - auth state should be determined by API calls
+	return null;
+}
+
+export function setRefreshToken(_token: string | null): void {
+	// No-op: Tokens are now managed via httpOnly cookies
+	console.warn(
+		"setRefreshToken is deprecated. Tokens are now managed via httpOnly cookies."
+	);
+}
+
+export function getRefreshToken(): string | null {
+	// Cannot access httpOnly cookies from JavaScript
+	return null;
+}
+
+export function setTokenExpiry(_expiresIn: number): void {
+	// No-op: Token expiry is managed by cookie maxAge
+	console.warn(
+		"setTokenExpiry is deprecated. Token expiry is managed by cookies."
+	);
+}
+
+export function isTokenExpired(): boolean {
+	// Cannot determine from JavaScript with httpOnly cookies
+	// The API will return 401 if token is expired
+	return false;
+}
+
+export function clearAllTokens(): void {
+	// No-op for client side - use logout API endpoint to clear cookies
+	console.warn(
+		"clearAllTokens is deprecated. Use the /auth/logout endpoint to clear cookies."
+	);
+}

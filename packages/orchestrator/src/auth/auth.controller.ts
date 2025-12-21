@@ -7,6 +7,7 @@ import {
 	Query,
 	UseGuards,
 	Req,
+	Res,
 	UseInterceptors,
 	UploadedFile,
 	BadRequestException,
@@ -28,10 +29,22 @@ import {
 	MaxLength,
 	IsOptional,
 } from "class-validator";
-import { AuthService, AuthTokens } from "./auth.service";
+import * as express from "express";
+import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { MeResponseDto, parseIncludes } from "./dto/me-response.dto";
 import { MinioService } from "../storage/minio.service";
+
+// Cookie configuration
+const COOKIE_OPTIONS = {
+	httpOnly: true,
+	secure: process.env.NODE_ENV === "production",
+	sameSite: "lax" as const,
+	path: "/",
+};
+
+const ACCESS_TOKEN_COOKIE = "wp_paas_access_token";
+const REFRESH_TOKEN_COOKIE = "wp_paas_refresh_token";
 
 class RegisterDto {
 	@IsEmail()
@@ -100,8 +113,9 @@ class ChangePasswordDto {
 	newPassword!: string;
 }
 
-interface AuthenticatedRequest extends Request {
+interface AuthenticatedRequest extends express.Request {
 	user: { id: string; email: string };
+	cookies: { [key: string]: string };
 }
 
 @ApiTags("Auth")
@@ -112,25 +126,91 @@ export class AuthController {
 		private readonly minioService: MinioService
 	) {}
 
+	/**
+	 * Helper to set authentication cookies
+	 */
+	private setAuthCookies(
+		res: express.Response,
+		accessToken: string,
+		refreshToken: string,
+		accessExpiresIn: number
+	): void {
+		// Access token cookie - shorter expiry
+		res.cookie(ACCESS_TOKEN_COOKIE, accessToken, {
+			...COOKIE_OPTIONS,
+			maxAge: accessExpiresIn * 1000, // Convert seconds to milliseconds
+		});
+
+		// Refresh token cookie - longer expiry (7 days)
+		res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+			...COOKIE_OPTIONS,
+			maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+		});
+	}
+
+	/**
+	 * Helper to clear authentication cookies
+	 */
+	private clearAuthCookies(res: express.Response): void {
+		res.clearCookie(ACCESS_TOKEN_COOKIE, { path: "/" });
+		res.clearCookie(REFRESH_TOKEN_COOKIE, { path: "/" });
+	}
+
 	@Post("register")
 	@ApiOperation({ summary: "Register a new user" })
 	@ApiResponse({ status: 201, description: "User registered successfully" })
 	@ApiResponse({ status: 409, description: "Email already registered" })
-	async register(@Body() dto: RegisterDto): Promise<AuthTokens> {
-		return this.authService.register(
+	async register(
+		@Body() dto: RegisterDto,
+		@Res({ passthrough: true }) res: express.Response
+	): Promise<{ success: boolean; expiresIn: number }> {
+		const tokens = await this.authService.register(
 			dto.email,
 			dto.password,
 			dto.name,
 			dto.fullName
 		);
+
+		// Set cookies instead of returning tokens
+		this.setAuthCookies(
+			res,
+			tokens.accessToken,
+			tokens.refreshToken,
+			tokens.expiresIn
+		);
+
+		return { success: true, expiresIn: tokens.expiresIn };
 	}
 
 	@Post("login")
 	@ApiOperation({ summary: "Login with email and password" })
 	@ApiResponse({ status: 200, description: "Login successful" })
 	@ApiResponse({ status: 401, description: "Invalid credentials" })
-	async login(@Body() dto: LoginDto): Promise<AuthTokens> {
-		return this.authService.login(dto.email, dto.password);
+	async login(
+		@Body() dto: LoginDto,
+		@Res({ passthrough: true }) res: express.Response
+	): Promise<{ success: boolean; expiresIn: number }> {
+		const tokens = await this.authService.login(dto.email, dto.password);
+
+		// Set cookies instead of returning tokens
+		this.setAuthCookies(
+			res,
+			tokens.accessToken,
+			tokens.refreshToken,
+			tokens.expiresIn
+		);
+
+		return { success: true, expiresIn: tokens.expiresIn };
+	}
+
+	@Post("logout")
+	@ApiOperation({ summary: "Logout and clear authentication cookies" })
+	@ApiResponse({ status: 200, description: "Logout successful" })
+	async logout(
+		@Res({ passthrough: true }) res: express.Response
+	): Promise<{ success: boolean }> {
+		this.clearAuthCookies(res);
+		return { success: true };
 	}
 
 	@Get("me")
@@ -216,9 +296,16 @@ export class AuthController {
 	@ApiResponse({ status: 401, description: "Unauthorized or wrong password" })
 	async deleteAccount(
 		@Req() req: AuthenticatedRequest,
-		@Body() dto: { password: string }
+		@Body() dto: { password: string },
+		@Res({ passthrough: true }) res: express.Response
 	): Promise<{ success: boolean }> {
-		return this.authService.deleteAccount(req.user.id, dto.password);
+		const result = await this.authService.deleteAccount(
+			req.user.id,
+			dto.password
+		);
+		// Clear cookies on account deletion
+		this.clearAuthCookies(res);
+		return result;
 	}
 
 	@Post("avatar")
@@ -265,5 +352,43 @@ export class AuthController {
 		await this.authService.updateProfile(req.user.id, { avatarUrl });
 
 		return { avatarUrl };
+	}
+
+	@Post("refresh")
+	@ApiOperation({
+		summary: "Refresh access token",
+		description:
+			"Refresh access token using the refresh token from cookies. Returns new tokens in cookies.",
+	})
+	@ApiResponse({
+		status: 200,
+		description: "New tokens generated successfully",
+	})
+	@ApiResponse({
+		status: 401,
+		description: "Invalid or expired refresh token",
+	})
+	async refresh(
+		@Req() req: AuthenticatedRequest,
+		@Res({ passthrough: true }) res: express.Response
+	): Promise<{ success: boolean; expiresIn: number }> {
+		// Get refresh token from cookie
+		const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE];
+
+		if (!refreshToken) {
+			throw new BadRequestException("Refresh token not found");
+		}
+
+		const tokens = await this.authService.refreshAccessToken(refreshToken);
+
+		// Set new cookies
+		this.setAuthCookies(
+			res,
+			tokens.accessToken,
+			tokens.refreshToken,
+			tokens.expiresIn
+		);
+
+		return { success: true, expiresIn: tokens.expiresIn };
 	}
 }

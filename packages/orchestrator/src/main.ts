@@ -4,14 +4,18 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { join } from "path";
+import cookieParser from "cookie-parser";
 
 async function bootstrap(): Promise<void> {
 	const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+	// Enable cookie parsing
+	app.use(cookieParser());
+
 	// Enable CORS
 	const corsOrigins = process.env.CORS_ORIGIN
 		? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
-		: "*";
+		: "http://localhost:5173";
 
 	app.enableCors({
 		origin: corsOrigins,

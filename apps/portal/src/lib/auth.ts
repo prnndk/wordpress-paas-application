@@ -1,14 +1,14 @@
 /**
  * Authentication Service
- * Handles all authentication operations with Bearer token authentication
+ * Handles all authentication operations with httpOnly cookie-based authentication
+ * Tokens are managed by the browser via httpOnly cookies - no client-side token storage
  */
 
-import { api, setAuthToken, getAuthToken, ApiRequestError } from "./api";
+import { api, ApiRequestError } from "./api";
 import type {
 	User,
 	LoginRequest,
 	RegisterRequest,
-	AuthResponse,
 	MeResponse,
 	IncludeOption,
 	TenantSummary,
@@ -30,6 +30,12 @@ export type {
 	Billing,
 };
 
+// Response type for cookie-based auth endpoints
+interface AuthCookieResponse {
+	success: boolean;
+	expiresIn: number;
+}
+
 const USER_STORAGE_KEY = "wp_paas_user";
 const PROFILE_STORAGE_KEY = "wp_paas_profile";
 
@@ -38,17 +44,15 @@ let cachedProfile: MeResponse | null = null;
 
 /**
  * Login with email and password
+ * Tokens are set as httpOnly cookies by the backend
  */
 export async function login(email: string, password: string): Promise<User> {
 	const payload: LoginRequest = { email, password };
 
-	// Step 1: Get access token from backend
-	const authResponse = await api.post<AuthResponse>("/auth/login", payload);
+	// Step 1: Login - backend will set httpOnly cookies
+	await api.post<AuthCookieResponse>("/auth/login", payload);
 
-	// Step 2: Store token (in memory + localStorage)
-	setAuthToken(authResponse.accessToken);
-
-	// Step 3: Fetch full user profile with all data
+	// Step 2: Fetch full user profile with all data
 	const profile = await getFullProfile([
 		"tenants",
 		"subscriptions",
@@ -60,7 +64,7 @@ export async function login(email: string, password: string): Promise<User> {
 		throw new ApiRequestError("Failed to fetch user data after login", 500);
 	}
 
-	// Step 4: Cache user and profile
+	// Step 3: Cache user and profile in localStorage (non-sensitive UI data only)
 	localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile.user));
 	localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
 	cachedProfile = profile;
@@ -70,6 +74,7 @@ export async function login(email: string, password: string): Promise<User> {
 
 /**
  * Register a new user account
+ * Tokens are set as httpOnly cookies by the backend
  */
 export async function register(
 	fullName: string,
@@ -78,13 +83,10 @@ export async function register(
 ): Promise<User> {
 	const payload: RegisterRequest = { fullName, email, password };
 
-	// Step 1: Register and get token
-	const authResponse = await api.post<AuthResponse>("/auth/register", payload);
+	// Step 1: Register - backend will set httpOnly cookies
+	await api.post<AuthCookieResponse>("/auth/register", payload);
 
-	// Step 2: Store token
-	setAuthToken(authResponse.accessToken);
-
-	// Step 3: Fetch full profile
+	// Step 2: Fetch full profile
 	const profile = await getFullProfile(["tenants", "subscriptions"]);
 
 	if (!profile) {
@@ -94,7 +96,7 @@ export async function register(
 		);
 	}
 
-	// Step 4: Cache user and profile
+	// Step 3: Cache user and profile
 	localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile.user));
 	localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
 	cachedProfile = profile;
@@ -104,11 +106,16 @@ export async function register(
 
 /**
  * Logout current user
- * Clears token and localStorage
+ * Calls backend to clear httpOnly cookies
  */
 export async function logout(): Promise<void> {
-	// Clear token (memory + localStorage)
-	setAuthToken(null);
+	try {
+		// Call logout endpoint to clear httpOnly cookies on the server
+		await api.post<{ success: boolean }>("/auth/logout");
+	} catch (error) {
+		// Even if the API call fails, clear local data
+		console.error("Logout API call failed:", error);
+	}
 
 	// Clear all cached data
 	localStorage.removeItem(USER_STORAGE_KEY);
@@ -118,7 +125,7 @@ export async function logout(): Promise<void> {
 
 /**
  * Get current authenticated user from backend (basic info only)
- * Requires valid Bearer token
+ * Authentication is verified via httpOnly cookies
  */
 export async function getCurrentUser(): Promise<User | null> {
 	try {
@@ -138,7 +145,6 @@ export async function getCurrentUser(): Promise<User | null> {
 			// Clear stale data
 			localStorage.removeItem(USER_STORAGE_KEY);
 			localStorage.removeItem(PROFILE_STORAGE_KEY);
-			setAuthToken(null);
 			cachedProfile = null;
 			return null;
 		}
@@ -250,45 +256,70 @@ export function getCachedBilling(): Billing | null {
 
 /**
  * Initialize authentication on app startup
- * Attempts to restore session using stored token
+ * Attempts to restore session using httpOnly cookies
  */
 export async function initAuth(): Promise<User | null> {
-	// Check if we have a token
-	const token = getAuthToken();
+	// Try to validate session with backend
+	// If cookies are valid, backend will authenticate the request
+	try {
+		const profile = await getFullProfile([
+			"tenants",
+			"subscriptions",
+			"cluster",
+			"audit",
+		]);
 
-	if (!token) {
-		// No token, clear any stale user data
-		localStorage.removeItem(USER_STORAGE_KEY);
-		localStorage.removeItem(PROFILE_STORAGE_KEY);
-		cachedProfile = null;
+		if (!profile) {
+			// Session invalid, clear local data
+			localStorage.removeItem(USER_STORAGE_KEY);
+			localStorage.removeItem(PROFILE_STORAGE_KEY);
+			cachedProfile = null;
+			return null;
+		}
+
+		return profile.user;
+	} catch (error) {
+		// Handle 401 errors (session expired)
+		if (error instanceof ApiRequestError && error.status === 401) {
+			localStorage.removeItem(USER_STORAGE_KEY);
+			localStorage.removeItem(PROFILE_STORAGE_KEY);
+			cachedProfile = null;
+			return null;
+		}
+
+		// For network errors, try to use cached data
+		console.error("Error during auth init:", error);
+		const cachedUser = getCachedUser();
+		if (cachedUser) {
+			// Return cached user, but session might be stale
+			return cachedUser;
+		}
+
 		return null;
 	}
-
-	// Try to validate token with backend and get full profile
-	const profile = await getFullProfile([
-		"tenants",
-		"subscriptions",
-		"cluster",
-		"audit",
-	]);
-
-	if (!profile) {
-		// Token invalid, clear everything
-		setAuthToken(null);
-		localStorage.removeItem(USER_STORAGE_KEY);
-		localStorage.removeItem(PROFILE_STORAGE_KEY);
-		cachedProfile = null;
-		return null;
-	}
-
-	return profile.user;
 }
 
 /**
  * Check if user is authenticated
+ * With httpOnly cookies, we can only check if we have cached user data
+ * The actual auth state is verified on each API call
  */
 export function isAuthenticated(): boolean {
-	return !!getAuthToken() && !!getCachedUser();
+	return !!getCachedUser();
+}
+
+/**
+ * Refresh the access token using the refresh token cookie
+ * This is called automatically when the access token expires
+ */
+export async function refreshToken(): Promise<boolean> {
+	try {
+		await api.post<AuthCookieResponse>("/auth/refresh");
+		return true;
+	} catch (error) {
+		console.error("Token refresh failed:", error);
+		return false;
+	}
 }
 
 /**
@@ -346,7 +377,14 @@ export async function changePassword(
 export async function deleteAccount(
 	password: string
 ): Promise<{ success: boolean }> {
-	return api.post<{ success: boolean }>("/auth/delete-account", { password });
+	const result = await api.post<{ success: boolean }>("/auth/delete-account", {
+		password,
+	});
+	// Clear local data after account deletion
+	localStorage.removeItem(USER_STORAGE_KEY);
+	localStorage.removeItem(PROFILE_STORAGE_KEY);
+	cachedProfile = null;
+	return result;
 }
 
 /**
@@ -356,14 +394,11 @@ export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
 	const formData = new FormData();
 	formData.append("file", file);
 
-	const token = getAuthToken();
 	const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 	const response = await fetch(`${baseUrl}/auth/avatar`, {
 		method: "POST",
-		headers: {
-			...(token ? { Authorization: `Bearer ${token}` } : {}),
-		},
+		credentials: "include", // Include cookies for authentication
 		body: formData,
 	});
 

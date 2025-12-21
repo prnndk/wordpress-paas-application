@@ -22,7 +22,8 @@ export interface UserPayload {
 
 export interface AuthTokens {
 	accessToken: string;
-	expiresIn: number;
+	refreshToken: string;
+	expiresIn: number; // Access token expiry in seconds
 }
 
 @Injectable()
@@ -353,9 +354,52 @@ export class AuthService {
 	}
 
 	private generateTokens(payload: UserPayload): AuthTokens {
-		const expiresIn = 7 * 24 * 60 * 60; // 7 days in seconds
-		const accessToken = this.jwtService.sign(payload);
+		const accessTokenExpiresIn = 15 * 60; // 15 minutes in seconds
+		const refreshTokenExpiresIn = 7 * 24 * 60 * 60; // 7 days in seconds
 
-		return { accessToken, expiresIn };
+		const accessToken = this.jwtService.sign(payload, {
+			expiresIn: accessTokenExpiresIn,
+		});
+
+		const refreshToken = this.jwtService.sign(
+			{ ...payload, type: "refresh" },
+			{ expiresIn: refreshTokenExpiresIn }
+		);
+
+		return { accessToken, refreshToken, expiresIn: accessTokenExpiresIn };
+	}
+
+	/**
+	 * Refresh access token using a valid refresh token
+	 */
+	async refreshAccessToken(refreshToken: string): Promise<AuthTokens> {
+		try {
+			// Verify the refresh token
+			const payload = this.jwtService.verify(refreshToken);
+
+			// Ensure it's a refresh token, not an access token
+			if (payload.type !== "refresh") {
+				throw new UnauthorizedException("Invalid token type");
+			}
+
+			// Verify user still exists
+			const user = await this.userRepository.findById(payload.id);
+			if (!user) {
+				throw new UnauthorizedException("User not found");
+			}
+
+			// Generate new tokens
+			return this.generateTokens({
+				id: user.id,
+				email: user.email,
+				roles: [user.role],
+			});
+		} catch (error) {
+			if (error instanceof UnauthorizedException) {
+				throw error;
+			}
+			// JWT verification failed (expired, invalid, etc.)
+			throw new UnauthorizedException("Invalid or expired refresh token");
+		}
 	}
 }
