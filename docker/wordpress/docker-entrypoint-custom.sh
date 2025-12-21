@@ -28,6 +28,45 @@ configure_wordpress() {
     done
     echo "wp-config.php found!"
 
+    # ============================================================================
+    # CRITICAL FIX: Ensure cookie paths are set in wp-config.php
+    # This MUST be done here because WordPress defines COOKIEPATH in wp-settings.php
+    # BEFORE mu-plugins are loaded. Without this, login will redirect in a loop.
+    # ============================================================================
+    if [ -n "${WP_PAAS_PATH_PREFIX:-}" ]; then
+        PREFIX="${WP_PAAS_PATH_PREFIX}"
+        
+        # Check if COOKIEPATH is already defined
+        if ! grep -q "define.*COOKIEPATH" /var/www/html/wp-config.php 2>/dev/null; then
+            echo "Adding cookie path constants to wp-config.php..."
+            
+            # Insert cookie path definitions BEFORE "That's all, stop editing!"
+            # Or before the require_once line if that comment doesn't exist
+            if grep -q "That's all, stop editing" /var/www/html/wp-config.php; then
+                sed -i "/That's all, stop editing/i\\
+/** Cookie paths for path-based routing */\\
+define('COOKIEPATH', '${PREFIX}/');\\
+define('SITECOOKIEPATH', '${PREFIX}/');\\
+define('ADMIN_COOKIE_PATH', '${PREFIX}/wp-admin');\\
+define('PLUGINS_COOKIE_PATH', '${PREFIX}/wp-content/plugins');\\
+" /var/www/html/wp-config.php
+            else
+                # Fallback: append before require_once ABSPATH
+                sed -i "/require_once.*ABSPATH.*wp-settings.php/i\\
+/** Cookie paths for path-based routing */\\
+define('COOKIEPATH', '${PREFIX}/');\\
+define('SITECOOKIEPATH', '${PREFIX}/');\\
+define('ADMIN_COOKIE_PATH', '${PREFIX}/wp-admin');\\
+define('PLUGINS_COOKIE_PATH', '${PREFIX}/wp-content/plugins');\\
+" /var/www/html/wp-config.php
+            fi
+            
+            echo "Cookie paths added: COOKIEPATH=${PREFIX}/"
+        else
+            echo "Cookie paths already defined in wp-config.php"
+        fi
+    fi
+
     # CRITICAL: Copy mu-plugins for path-based routing fix
     # This MUST happen on EVERY replica, EVERY time - always overwrite to ensure consistency
     if [ -d /opt/wp-paas-mu-plugins ]; then

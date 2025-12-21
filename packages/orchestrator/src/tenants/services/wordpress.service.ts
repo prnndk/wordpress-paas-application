@@ -75,79 +75,87 @@ export class WordPressService {
 		);
 		const minioBucket = `wp-uploads`;
 
-		const spec: ServiceSpec = {
-			name: serviceName,
-			image: this.wpImage,
-			replicas, // Use plan-based replicas
-			env: [
-				`WORDPRESS_DB_HOST=${database.host}:${database.port}`,
-				`WORDPRESS_DB_USER=${database.user}`,
-				`WORDPRESS_DB_PASSWORD=${database.password}`,
-				`WORDPRESS_DB_NAME=${database.name}`,
-				`WORDPRESS_TABLE_PREFIX=wp_`,
-				// WordPress admin credentials for auto-setup
-				`WORDPRESS_ADMIN_USER=${wpAdminUser}`,
-				`WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
-				`WORDPRESS_ADMIN_EMAIL=${wpAdminEmail}`,
-				`WORDPRESS_TITLE=${siteTitle}`,
-				// Path prefix for any additional URL handling in mu-plugin
-				`WP_PAAS_PATH_PREFIX=/${subdomain}`,
-				// IMPORTANT: WP_HOME and WP_SITEURL MUST include the path prefix
-				// Traefik strips the prefix from incoming requests, but WordPress needs
-				// to generate URLs WITH the prefix. This prevents redirect loops.
-				`WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('COOKIE_DOMAIN', false); define('COOKIEPATH', '/${subdomain}/'); define('SITECOOKIEPATH', '/${subdomain}/'); define('ADMIN_COOKIE_PATH', '/${subdomain}/wp-admin'); define('PLUGINS_COOKIE_PATH', '/${subdomain}/wp-content/plugins'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
-				// S3/MinIO configuration for WP Offload Media plugin
-				`S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
-				`S3_UPLOADS_BUCKET=${minioBucket}`,
-				`S3_UPLOADS_KEY=${minioAccessKey}`,
-				`S3_UPLOADS_SECRET=${minioSecretKey}`,
-				`S3_UPLOADS_REGION=us-east-1`,
-				`S3_UPLOADS_USE_PATH_STYLE=true`,
-			],
-			labels: {
-				"wp-paas.tenant": tenantId,
-				"wp-paas.tenant-id": tenantId,
-				"wp-paas.subdomain": subdomain,
-				"wp-paas.type": "wordpress",
-				// Traefik labels for path-based routing (http://IP/subdomain/)
-				"traefik.enable": "true",
-				"traefik.docker.network": "wp_paas_proxy_network",
-				[`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
-				[`traefik.http.routers.${serviceName}.entrypoints`]: "web",
-				// Strip prefix middleware - WordPress receives / instead of /subdomain/
-				[`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-stripprefix`,
-				[`traefik.http.middlewares.${serviceName}-stripprefix.stripprefix.prefixes`]: `/${subdomain}`,
-				// Service config
-				[`traefik.http.services.${serviceName}.loadbalancer.server.port`]: "80",
-				[`traefik.http.services.${serviceName}.loadbalancer.passHostHeader`]:
-					"true",
-				// Health check at root (after prefix is stripped)
-				[`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]:
-					"/",
-				[`traefik.http.services.${serviceName}.loadbalancer.healthcheck.interval`]:
-					"30s",
-			},
-			mounts: [
-				{
-					source: volumeName,
-					target: "/var/www/html/wp-content",
-					type: "volume", // Changed from 'bind' to 'volume'
-				},
-			],
-			networks: [
-				"wp_paas_network",
-				"wp_paas_db_network",
-				"wp_paas_proxy_network",
-			],
-			constraints: ["node.role == worker"],
-			// Expose WordPress port via Swarm ingress (accessible on all nodes)
-			ports: [
-				{
-					targetPort: 80,
-					// No publishedPort = Docker assigns random port 30000+
-				},
-			],
-		};
+        const spec: ServiceSpec = {
+            name: serviceName,
+            image: this.wpImage,
+            replicas, // Use plan-based replicas
+            env: [
+                `WORDPRESS_DB_HOST=${database.host}:${database.port}`,
+                `WORDPRESS_DB_USER=${database.user}`,
+                `WORDPRESS_DB_PASSWORD=${database.password}`,
+                `WORDPRESS_DB_NAME=${database.name}`,
+                `WORDPRESS_TABLE_PREFIX=wp_`,
+                // WordPress admin credentials for auto-setup
+                `WORDPRESS_ADMIN_USER=${wpAdminUser}`,
+                `WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
+                `WORDPRESS_ADMIN_EMAIL=${wpAdminEmail}`,
+                `WORDPRESS_TITLE=${siteTitle}`,
+                // Path prefix for any additional URL handling in mu-plugin
+                `WP_PAAS_PATH_PREFIX=/${subdomain}`,
+                // IMPORTANT: WP_HOME and WP_SITEURL MUST include the path prefix
+                // Traefik strips the prefix from incoming requests, but WordPress needs
+                // to generate URLs WITH the prefix. This prevents redirect loops.
+                // CRITICAL: Cookie paths MUST be defined in wp-config.php (not mu-plugins)
+                // because WordPress processes cookie constants BEFORE loading mu-plugins.
+                `WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('COOKIEPATH', '/${subdomain}/'); define('SITECOOKIEPATH', '/${subdomain}/'); define('ADMIN_COOKIE_PATH', '/${subdomain}/wp-admin'); define('PLUGINS_COOKIE_PATH', '/${subdomain}/wp-content/plugins'); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+                // S3/MinIO configuration for WP Offload Media plugin
+                `S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
+                `S3_UPLOADS_BUCKET=${minioBucket}`,
+                `S3_UPLOADS_KEY=${minioAccessKey}`,
+                `S3_UPLOADS_SECRET=${minioSecretKey}`,
+                `S3_UPLOADS_REGION=us-east-1`,
+                `S3_UPLOADS_USE_PATH_STYLE=true`,
+            ],
+            labels: {
+                "wp-paas.tenant": tenantId,
+                "wp-paas.tenant-id": tenantId,
+                "wp-paas.subdomain": subdomain,
+                "wp-paas.type": "wordpress",
+                // Traefik labels for path-based routing (http://IP/subdomain/)
+                "traefik.enable": "true",
+                "traefik.docker.network": "wp_paas_proxy_network",
+                [`traefik.http.routers.${serviceName}.rule`]: `PathPrefix(\`/${subdomain}\`)`,
+                [`traefik.http.routers.${serviceName}.entrypoints`]: "web",
+                // Strip prefix middleware - WordPress receives / instead of /subdomain/
+                [`traefik.http.routers.${serviceName}.middlewares`]: `${serviceName}-stripprefix`,
+                [`traefik.http.middlewares.${serviceName}-stripprefix.stripprefix.prefixes`]: `/${subdomain}`,
+                // Service config
+                [`traefik.http.services.${serviceName}.loadbalancer.server.port`]: "80",
+                [`traefik.http.services.${serviceName}.loadbalancer.passHostHeader`]:
+                    "true",
+                // CRITICAL: Sticky sessions for login to work with multiple replicas
+                // Without this, session stored on replica 1 won't be found on replica 2
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.name`]: `wp_sticky_${subdomain}`,
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.httpOnly`]: "true",
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.secure`]: "false",
+                [`traefik.http.services.${serviceName}.loadbalancer.sticky.cookie.sameSite`]: "lax",
+                // Health check at root (after prefix is stripped)
+                [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.path`]:
+                    "/",
+                [`traefik.http.services.${serviceName}.loadbalancer.healthcheck.interval`]:
+                    "30s",
+            },
+            mounts: [
+                {
+                    source: volumeName,
+                    target: "/var/www/html/wp-content",
+                    type: "volume", // Changed from 'bind' to 'volume'
+                },
+            ],
+            networks: [
+                "wp_paas_network",
+                "wp_paas_db_network",
+                "wp_paas_proxy_network",
+            ],
+            constraints: ["node.role == worker"],
+            // Expose WordPress port via Swarm ingress (accessible on all nodes)
+            ports: [
+                {
+                    targetPort: 80,
+                    // No publishedPort = Docker assigns random port 30000+
+                },
+            ],
+        };
 
 		const serviceId = await this.dockerService.createService(spec);
 		this.logger.log(

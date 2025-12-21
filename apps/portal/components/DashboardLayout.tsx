@@ -23,6 +23,7 @@ import {
 	Bell,
 	Search,
 	Box,
+	Boxes,
 	ChevronRight,
 	Plus,
 	LifeBuoy,
@@ -116,8 +117,21 @@ const NAV_GROUPS: { label?: string; items: NavItemConfig[] }[] = [
 				icon: Shield,
 				adminOnly: true,
 				children: [
-					{ label: "Users", path: "/admin/users", icon: Users },
-					{ label: "Maintenance", path: "/admin/maintenance", icon: Wrench },
+					{
+						label: "User Management",
+						icon: Users,
+						path: "/admin/users",
+					},
+					{
+						label: "Containers",
+						icon: Boxes,
+						path: "/admin/services",
+					},
+					{
+						label: "Maintenance",
+						icon: Wrench,
+						path: "/admin/maintenance",
+					},
 				],
 			},
 		],
@@ -322,9 +336,8 @@ export const DashboardLayout: React.FC = () => {
 	) => {
 		if (!path) return "";
 
-		const baseClass = `group flex items-center ${
-			isChild ? "pl-11 pr-3" : "px-3"
-		} py-2 text-sm font-medium rounded-lg transition-all duration-200 mb-0.5`;
+		const baseClass = `group flex items-center ${isChild ? "pl-11 pr-3" : "px-3"
+			} py-2 text-sm font-medium rounded-lg transition-all duration-200 mb-0.5`;
 		const activeClass = "bg-indigo-50 text-indigo-700 font-semibold";
 		const inactiveClass =
 			"text-slate-600 hover:bg-slate-50 hover:text-slate-900";
@@ -397,19 +410,17 @@ export const DashboardLayout: React.FC = () => {
 				<div key={item.label} className='mb-1'>
 					<button
 						onClick={() => toggleMenu(item.label)}
-						className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
-							isChildActive || isExpanded
-								? "text-indigo-700 bg-indigo-50/50"
-								: "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-						}`}
+						className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${isChildActive || isExpanded
+							? "text-indigo-700 bg-indigo-50/50"
+							: "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+							}`}
 						title={isSidebarCollapsed ? item.label : undefined}>
 						<div className='flex items-center'>
 							<item.icon
-								className={`h-5 w-5 flex-shrink-0 transition-colors ${
-									isChildActive || isExpanded
-										? "text-indigo-600"
-										: "text-slate-400 group-hover:text-slate-500"
-								}`}
+								className={`h-5 w-5 flex-shrink-0 transition-colors ${isChildActive || isExpanded
+									? "text-indigo-600"
+									: "text-slate-400 group-hover:text-slate-500"
+									}`}
 							/>
 							{!isSidebarCollapsed && (
 								<span className='ml-3 truncate max-w-[140px]'>
@@ -419,20 +430,18 @@ export const DashboardLayout: React.FC = () => {
 						</div>
 						{!isSidebarCollapsed && (
 							<ChevronDown
-								className={`h-4 w-4 transition-transform duration-200 ${
-									isExpanded ? "transform rotate-180" : ""
-								}`}
+								className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "transform rotate-180" : ""
+									}`}
 							/>
 						)}
 					</button>
 
 					{/* Sub-menu items */}
 					<div
-						className={`overflow-hidden transition-all duration-300 ${
-							isExpanded && !isSidebarCollapsed
-								? "max-h-96 opacity-100 mt-1"
-								: "max-h-0 opacity-0"
-						}`}>
+						className={`overflow-hidden transition-all duration-300 ${isExpanded && !isSidebarCollapsed
+							? "max-h-96 opacity-100 mt-1"
+							: "max-h-0 opacity-0"
+							}`}>
 						{item.children?.map((child) => renderNavItem(child, true))}
 					</div>
 				</div>
@@ -443,9 +452,8 @@ export const DashboardLayout: React.FC = () => {
 		return (
 			<Link
 				key={item.label}
-				to={`${item.path || "#"}${
-					item.requiredTab ? `?tab=${item.requiredTab}` : ""
-				}`}
+				to={`${item.path || "#"}${item.requiredTab ? `?tab=${item.requiredTab}` : ""
+					}`}
 				className={getLinkClass(
 					item.path,
 					item.strict,
@@ -489,17 +497,15 @@ export const DashboardLayout: React.FC = () => {
 
 				{/* --- Sidebar --- */}
 				<div
-					className={`fixed inset-y-0 left-0 z-40 bg-white border-r border-slate-200 transform transition-all duration-300 ease-in-out ${
-						mobileMenuOpen
-							? "translate-x-0"
-							: "-translate-x-full md:translate-x-0"
-					} ${isSidebarCollapsed ? "w-20" : "w-64"}`}>
+					className={`fixed inset-y-0 left-0 z-40 bg-white border-r border-slate-200 transform transition-all duration-300 ease-in-out ${mobileMenuOpen
+						? "translate-x-0"
+						: "-translate-x-full md:translate-x-0"
+						} ${isSidebarCollapsed ? "w-20" : "w-64"}`}>
 					<div className='flex flex-col h-full'>
 						{/* Logo */}
 						<div
-							className={`flex items-center h-16 flex-shrink-0 border-b border-slate-100 ${
-								isSidebarCollapsed ? "justify-center px-0" : "px-6"
-							}`}>
+							className={`flex items-center h-16 flex-shrink-0 border-b border-slate-100 ${isSidebarCollapsed ? "justify-center px-0" : "px-6"
+								}`}>
 							<Link
 								to='/'
 								className='flex items-center gap-3 group overflow-hidden'>
@@ -507,9 +513,8 @@ export const DashboardLayout: React.FC = () => {
 									<Box className='w-5 h-5' />
 								</div>
 								<span
-									className={`text-lg font-bold text-slate-900 tracking-tight whitespace-nowrap transition-opacity duration-300 ${
-										isSidebarCollapsed ? "opacity-0 w-0" : "opacity-100"
-									}`}>
+									className={`text-lg font-bold text-slate-900 tracking-tight whitespace-nowrap transition-opacity duration-300 ${isSidebarCollapsed ? "opacity-0 w-0" : "opacity-100"
+										}`}>
 									WPCube
 								</span>
 							</Link>
@@ -517,9 +522,8 @@ export const DashboardLayout: React.FC = () => {
 
 						{/* Collapse Toggle - Moved Below Logo */}
 						<div
-							className={`hidden md:flex items-center shrink-0 py-2 border-b border-slate-100 transition-all ${
-								isSidebarCollapsed ? "justify-center" : "justify-end px-4"
-							}`}>
+							className={`hidden md:flex items-center shrink-0 py-2 border-b border-slate-100 transition-all ${isSidebarCollapsed ? "justify-center" : "justify-end px-4"
+								}`}>
 							<button
 								onClick={toggleSidebar}
 								className='p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors'
@@ -540,9 +544,8 @@ export const DashboardLayout: React.FC = () => {
 							<div className='mb-2'>
 								<button
 									onClick={() => setCreateModalOpen(true)}
-									className={`w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 rounded-lg transition-all shadow-sm ${
-										isSidebarCollapsed ? "px-0" : "px-4"
-									}`}
+									className={`w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 rounded-lg transition-all shadow-sm ${isSidebarCollapsed ? "px-0" : "px-4"
+										}`}
 									title='Create New Instance'>
 									<Plus className='w-5 h-5' />
 									{!isSidebarCollapsed && <span>New Instance</span>}
@@ -575,9 +578,8 @@ export const DashboardLayout: React.FC = () => {
 						{/* User Footer */}
 						<div className='flex-shrink-0 border-t border-slate-200 p-3'>
 							<div
-								className={`flex items-center rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${
-									isSidebarCollapsed ? "justify-center p-2" : "p-2"
-								}`}
+								className={`flex items-center rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${isSidebarCollapsed ? "justify-center p-2" : "p-2"
+									}`}
 								onClick={(e) => {
 									e.stopPropagation();
 									setIsProfileOpen(!isProfileOpen);
@@ -611,9 +613,8 @@ export const DashboardLayout: React.FC = () => {
 
 				{/* --- Main Content --- */}
 				<div
-					className={`flex-1 flex flex-col transition-all duration-300 ${
-						isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
-					}`}>
+					className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
+						}`}>
 					{/* Topbar */}
 					<header className='sticky top-0 z-30 flex-shrink-0 flex h-16 bg-white border-b border-slate-200 shadow-sm'>
 						<div className='flex-1 px-4 sm:px-6 lg:px-8 flex justify-between items-center'>
@@ -680,13 +681,12 @@ export const DashboardLayout: React.FC = () => {
 																className='p-4 hover:bg-slate-50 transition-colors'>
 																<div className='flex items-start gap-3'>
 																	<div
-																		className={`mt-1 p-1.5 rounded-full flex-shrink-0 ${
-																			announcement.type === "warning"
-																				? "bg-yellow-100 text-yellow-600"
-																				: announcement.type === "maintenance"
+																		className={`mt-1 p-1.5 rounded-full flex-shrink-0 ${announcement.type === "warning"
+																			? "bg-yellow-100 text-yellow-600"
+																			: announcement.type === "maintenance"
 																				? "bg-orange-100 text-orange-600"
 																				: "bg-blue-100 text-blue-600"
-																		}`}>
+																			}`}>
 																		<Megaphone className='w-3 h-3' />
 																	</div>
 																	<div>

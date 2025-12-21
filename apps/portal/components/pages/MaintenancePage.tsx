@@ -24,6 +24,7 @@ import {
 	RollingUpdateResult,
 	CreateAnnouncementPayload,
 	ScheduledMaintenance,
+	WordPressTenant,
 } from "../../src/lib/admin";
 
 export const MaintenancePage: React.FC = () => {
@@ -40,11 +41,13 @@ export const MaintenancePage: React.FC = () => {
 
 	// Scheduled Maintenance State
 	const [scheduledMaintenances, setScheduledMaintenances] = useState<ScheduledMaintenance[]>([]);
+	const [availableTenants, setAvailableTenants] = useState<WordPressTenant[]>([]);
 	const [scheduleForm, setScheduleForm] = useState({
 		scheduledAt: '',
 		targetImage: '',
 		forceUpdate: false,
 		announcementId: '',
+		targetTenantIds: [] as string[],
 	});
 	const [showScheduleModal, setShowScheduleModal] = useState(false);
 
@@ -64,19 +67,22 @@ export const MaintenancePage: React.FC = () => {
 		setTimeout(() => setToast(null), 3000);
 	};
 
+	// Fetch data on mount
 	useEffect(() => {
 		const fetchData = async () => {
 			try {
-				const [imageData, announcementsData, scheduledData] = await Promise.all([
+				const [imageData, announcementsData, scheduledData, tenantsData] = await Promise.all([
 					adminService.getCurrentImage(),
 					adminService.getAnnouncements(),
 					adminService.getScheduledMaintenances(),
+					adminService.getAvailableTenants(),
 				]);
 
 				setCurrentImage(imageData.currentImage);
 				setNewImage(imageData.currentImage);
 				setAnnouncements(announcementsData);
 				setScheduledMaintenances(scheduledData);
+				setAvailableTenants(tenantsData);
 			} catch (error: any) {
 				console.error("Failed to fetch data:", error);
 				showToast("Failed to load maintenance data");
@@ -87,6 +93,24 @@ export const MaintenancePage: React.FC = () => {
 
 		fetchData();
 	}, []);
+
+	// Poll for in-progress maintenance updates
+	useEffect(() => {
+		const hasInProgress = scheduledMaintenances.some(m => m.status === 'in_progress');
+		
+		if (!hasInProgress) return;
+
+		const interval = setInterval(async () => {
+			try {
+				const updated = await adminService.getScheduledMaintenances();
+				setScheduledMaintenances(updated);
+			} catch (error) {
+				console.error("Failed to poll maintenance status:", error);
+			}
+		}, 3000); // Poll every 3 seconds
+
+		return () => clearInterval(interval);
+	}, [scheduledMaintenances]);
 
 	const handleRollingUpdate = async () => {
 		if (!newImage) return;
@@ -167,6 +191,7 @@ export const MaintenancePage: React.FC = () => {
 				targetImage: scheduleForm.targetImage,
 				forceUpdate: scheduleForm.forceUpdate,
 				announcementId: scheduleForm.announcementId || undefined,
+				targetTenantIds: scheduleForm.targetTenantIds.length > 0 ? scheduleForm.targetTenantIds : undefined,
 			});
 			setScheduledMaintenances([newScheduled, ...scheduledMaintenances]);
 			setShowScheduleModal(false);
@@ -175,6 +200,7 @@ export const MaintenancePage: React.FC = () => {
 				targetImage: currentImage,
 				forceUpdate: false,
 				announcementId: '',
+				targetTenantIds: [],
 			});
 			showToast("Scheduled maintenance created");
 		} catch (error: any) {
@@ -668,6 +694,7 @@ export const MaintenancePage: React.FC = () => {
 								targetImage: currentImage,
 								forceUpdate: false,
 								announcementId: '',
+								targetTenantIds: [],
 							});
 							setShowScheduleModal(true);
 						}}
@@ -740,9 +767,37 @@ export const MaintenancePage: React.FC = () => {
 												}`}></span>
 											{maintenance.status.charAt(0).toUpperCase() + maintenance.status.slice(1).replace('_', ' ')}
 										</span>
+										{/* Progress Bar for In Progress */}
+										{maintenance.status === 'in_progress' && maintenance.progress && (() => {
+											try {
+												const progress = JSON.parse(maintenance.progress);
+												const percentage = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+												return (
+													<div className='mt-2 space-y-1'>
+														<div className='flex items-center justify-between text-xs text-slate-600'>
+															<span>{progress.current} / {progress.total} services</span>
+															<span>{Math.round(percentage)}%</span>
+														</div>
+														<div className='w-full bg-slate-200 rounded-full h-1.5 overflow-hidden'>
+															<div 
+																className='bg-blue-600 h-full transition-all duration-300 ease-out'
+																style={{ width: `${percentage}%` }}
+															></div>
+														</div>
+														{progress.currentService && (
+															<div className='text-xs text-slate-500 truncate'>
+																Updating: {progress.currentService}
+															</div>
+														)}
+													</div>
+												);
+											} catch (e) {
+												return null;
+											}
+										})()}
 									</td>
 									<td className='px-6 py-4 text-right'>
-										<div className='flex items-center justify-end gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity'>
+										<div className='flex items-center justify-end gap-1 opacity=100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity'>
 											{maintenance.status === 'pending' && (
 												<>
 													<button
@@ -856,6 +911,65 @@ export const MaintenancePage: React.FC = () => {
 										</option>
 									))}
 								</select>
+							</div>
+
+							<div>
+								<label className='block text-sm font-semibold text-slate-700 mb-1.5'>
+									Target Tenants
+								</label>
+								<div className='border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto bg-white'>
+									<label className='flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors'>
+										<input
+											type='checkbox'
+											checked={scheduleForm.targetTenantIds.length === 0}
+											onChange={(e) => {
+												if (e.target.checked) {
+													setScheduleForm({
+														...scheduleForm,
+														targetTenantIds: [],
+													});
+												}
+											}}
+											className='w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500'
+										/>
+										<span className='text-sm font-medium text-slate-900'>
+											All Tenants
+										</span>
+									</label>
+									<div className='h-px bg-slate-200 my-2'></div>
+									{availableTenants.map((tenant) => (
+										<label
+											key={tenant.id}
+											className='flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors'>
+											<input
+												type='checkbox'
+												checked={scheduleForm.targetTenantIds.includes(tenant.id)}
+												onChange={(e) => {
+													if (e.target.checked) {
+														setScheduleForm({
+															...scheduleForm,
+															targetTenantIds: [...scheduleForm.targetTenantIds, tenant.id],
+														});
+													} else {
+														setScheduleForm({
+															...scheduleForm,
+															targetTenantIds: scheduleForm.targetTenantIds.filter(id => id !== tenant.id),
+														});
+													}
+												}}
+												className='w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500'
+											/>
+											<span className='text-sm text-slate-700'>
+												{tenant.name} <span className='text-slate-400'>({tenant.slug})</span>
+											</span>
+										</label>
+									))}
+									{availableTenants.length === 0 && (
+										<p className='text-sm text-slate-500 text-center py-2'>
+											No tenants available
+										</p>
+									)}
+								</div>
 							</div>
 
 							<label className='flex items-center gap-3 cursor-pointer group'>

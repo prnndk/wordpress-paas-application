@@ -9,6 +9,7 @@ import {
 	ChevronRight,
 	Loader2,
 	ArrowRight,
+	Boxes,
 } from "lucide-react";
 import { adminService, AdminStats } from "../../src/lib/admin";
 
@@ -111,6 +112,12 @@ export const AdminDashboard: React.FC = () => {
 			description: "Rolling updates, announcements",
 			icon: Wrench,
 			href: "/admin/maintenance",
+		},
+		{
+			label: "Container Management",
+			description: "All Docker services & nodes",
+			icon: Boxes,
+			href: "/admin/services",
 		},
 	];
 

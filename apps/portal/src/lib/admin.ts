@@ -95,9 +95,11 @@ export interface ScheduledMaintenance {
 	forceUpdate: boolean;
 	startedAt: string | null;
 	completedAt: string | null;
+	progress: string | null; // JSON: {current: number, total: number, currentService: string}
 	servicesUpdated: string | null;
 	errors: string | null;
 	announcementId: string | null;
+	targetTenantIds: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -107,6 +109,13 @@ export interface CreateScheduledMaintenancePayload {
 	targetImage: string;
 	forceUpdate?: boolean;
 	announcementId?: string;
+	targetTenantIds?: string[];
+}
+
+export interface WordPressTenant {
+	id: string;
+	name: string;
+	slug: string;
 }
 
 export interface MaintenanceStatus {
@@ -119,6 +128,43 @@ export interface MaintenanceStatus {
 	} | null;
 }
 
+export interface ServiceTask {
+	id: string;
+	nodeId: string;
+	nodeName: string;
+	state: string;
+	desiredState: string;
+	createdAt: string;
+	updatedAt: string;
+	error?: string;
+}
+
+export interface DockerService {
+	id: string;
+	name: string;
+	image: string;
+	replicas: number;
+	runningReplicas: number;
+	createdAt: string;
+	updatedAt: string;
+	labels: Record<string, string>;
+	tasks: ServiceTask[];
+}
+
+export interface DockerNode {
+	id: string;
+	hostname: string;
+	status: string;
+	role: string;
+	availability: string;
+	address: string;
+}
+
+export interface ServicesResponse {
+	services: DockerService[];
+	nodes: DockerNode[];
+}
+
 // ============ Admin Service ============
 
 export const adminService = {
@@ -127,6 +173,12 @@ export const adminService = {
 	 * Get admin dashboard statistics
 	 */
 	getStats: () => api.get<AdminStats>("/admin/stats"),
+
+	// -------- Docker Services --------
+	/**
+	 * Get all Docker services with node info
+	 */
+	getAllServices: () => api.get<ServicesResponse>("/admin/services"),
 
 	// -------- User Management --------
 	/**
@@ -151,6 +203,11 @@ export const adminService = {
 	 * Get current WordPress Docker image
 	 */
 	getCurrentImage: () => api.get<CurrentImageInfo>("/admin/maintenance/image"),
+
+	/**
+	 * Get available WordPress tenants
+	 */
+	getAvailableTenants: () => api.get<WordPressTenant[]>("/admin/maintenance/tenants"),
 
 	/**
 	 * Start rolling update for all WordPress instances

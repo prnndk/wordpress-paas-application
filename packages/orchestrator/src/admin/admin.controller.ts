@@ -89,4 +89,10 @@ export class AdminController {
         }
         return tenant;
     }
+
+    @Get('services')
+    @ApiOperation({ summary: 'List all Docker services with node info' })
+    async getAllServices() {
+        return this.adminService.getAllServices();
+    }
 }

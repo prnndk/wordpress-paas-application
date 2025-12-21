@@ -11,7 +11,7 @@ import {
     HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsOptional, IsDateString, IsIn, MaxLength } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsDateString, IsIn, IsArray, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from './admin.guard';
 import { MaintenanceService } from './maintenance.service';
@@ -67,6 +67,11 @@ class CreateScheduledMaintenanceDto {
     @IsString()
     @IsOptional()
     announcementId?: string;
+
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    targetTenantIds?: string[];
 }
 
 @ApiTags('Admin - Maintenance')
@@ -81,6 +86,12 @@ export class MaintenanceController {
     async getCurrentImage() {
         const image = await this.maintenanceService.getCurrentWordPressImage();
         return { currentImage: image };
+    }
+
+    @Get('tenants')
+    @ApiOperation({ summary: 'Get available WordPress tenants' })
+    async getAvailableTenants() {
+        return this.maintenanceService.getAvailableWordPressTenants();
     }
 
     @Post('rolling-update')
@@ -109,6 +120,7 @@ export class MaintenanceController {
             targetImage: dto.targetImage,
             forceUpdate: dto.forceUpdate,
             announcementId: dto.announcementId,
+            targetTenantIds: dto.targetTenantIds,
         });
     }
 
