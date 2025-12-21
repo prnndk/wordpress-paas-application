@@ -116,6 +116,21 @@ export class MaintenanceService {
         });
     }
 
+    async getUpcomingMaintenances() {
+        const now = new Date();
+        return this.prisma.scheduledMaintenance.findMany({
+            where: {
+                status: 'pending',
+                scheduledAt: {
+                    gte: now,
+                },
+            },
+            orderBy: { scheduledAt: 'asc' },
+            include: { announcement: true },
+            take: 5, // Limit to 5 upcoming
+        });
+    }
+
     async checkActiveMaintenanceWindow() {
         return this.currentMaintenanceId !== null;
     }

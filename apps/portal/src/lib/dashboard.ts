@@ -237,6 +237,42 @@ export const dashboardService = {
 		}>("/monitoring/prometheus/health"),
 
 	/**
+	 * Get container inspection details (env vars, mounts, resources, tasks)
+	 */
+	getContainerInspect: (id: string) =>
+		api.get<{
+			id: string;
+			name: string;
+			image: string;
+			replicas: number;
+			runningReplicas: number;
+			createdAt: string;
+			updatedAt: string;
+			env: { key: string; value: string; masked?: boolean }[];
+			mounts: { source: string; target: string; type: string }[];
+			networks: string[];
+			labels: Record<string, string>;
+			resources: {
+				cpuLimit?: number;
+				memoryLimit?: number;
+				cpuReservation?: number;
+				memoryReservation?: number;
+			};
+			tasks: {
+				id: string;
+				nodeId: string;
+				state: string;
+				desiredState: string;
+				error?: string;
+				containerStatus?: {
+					containerId?: string;
+					pid?: number;
+					exitCode?: number;
+				};
+			}[];
+		}>(`/tenants/${id}/inspect`),
+
+	/**
 	 * Get quota status for current user
 	 */
 	getQuota: () => api.get<QuotaStatus>("/tenants/quota"),

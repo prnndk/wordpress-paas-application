@@ -173,6 +173,12 @@ export class MaintenanceStatusController {
         }
         return this.maintenanceService.getActiveMaintenanceInfo();
     }
+
+    @Get('upcoming')
+    @ApiOperation({ summary: 'Get upcoming scheduled maintenances (public)' })
+    async getUpcomingMaintenances() {
+        return this.maintenanceService.getUpcomingMaintenances();
+    }
 }
 
 // Admin announcements management

@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { LogViewerModal } from "../modals/LogViewerModal";
 import { BackupManagerModal } from "../modals/BackupManagerModal";
 import { DeleteConfirmationModal } from "../modals/DeleteConfirmationModal";
+import { ContainerInspectModal } from "../modals/ContainerInspectModal";
 
 // Import tabs
 import { OverviewTab } from "./tabs/OverviewTab";
@@ -39,6 +40,7 @@ import {
 	Layers,
 	Play,
 	Hammer,
+	Eye,
 } from "lucide-react";
 
 export const InstanceDetails: React.FC = () => {
@@ -79,7 +81,7 @@ export const InstanceDetails: React.FC = () => {
 		left: number;
 	} | null>(null);
 	const [modalType, setModalType] = useState<
-		"none" | "logs" | "backup" | "delete" | "rebuild"
+		"none" | "logs" | "backup" | "delete" | "rebuild" | "inspect"
 	>("none");
 
 	// Ref to track if we've initialized the replicas state from DB
@@ -250,6 +252,8 @@ export const InstanceDetails: React.FC = () => {
 			setModalType("logs");
 		} else if (action === "rebuild") {
 			setModalType("rebuild");
+		} else if (action === "inspect") {
+			setModalType("inspect");
 		} else if (action === "delete") {
 			setModalType("delete");
 		} else if (["start", "stop", "restart"].includes(action)) {
@@ -320,6 +324,12 @@ export const InstanceDetails: React.FC = () => {
 				isOpen={modalType === "delete"}
 				onClose={() => setModalType("none")}
 				onConfirm={handleDeleteConfirm}
+				instanceName={instance.name}
+			/>
+			<ContainerInspectModal
+				isOpen={modalType === "inspect"}
+				onClose={() => setModalType("none")}
+				instanceId={instance.id}
 				instanceName={instance.name}
 			/>
 
@@ -707,6 +717,26 @@ export const InstanceDetails: React.FC = () => {
 									</div>
 								</div>
 							</div>
+
+							{/* Container Details Section */}
+							<div className='bg-white rounded-xl border border-slate-200 overflow-hidden'>
+								<div className='px-6 py-4 border-b border-slate-100'>
+									<h2 className='font-medium text-slate-900'>
+										Container Inspection
+									</h2>
+									<p className='text-sm text-slate-500 mt-1'>
+										View environment variables, mounts, resources, and tasks
+									</p>
+								</div>
+								<div className='p-6'>
+									<button
+										onClick={() => setModalType("inspect")}
+										className='w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2'>
+										<Eye className='w-4 h-4' />
+										View Container Details
+									</button>
+								</div>
+							</div>
 						</div>
 					)}
 				</div>
@@ -781,6 +811,13 @@ export const InstanceDetails: React.FC = () => {
 								className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
 								<Database className='w-4 h-4 text-slate-400' /> Backups
 							</button>
+							{isAdmin && (
+								<button
+									onClick={() => handleMenuAction("inspect")}
+									className='w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50 flex items-center gap-2'>
+									<Eye className='w-4 h-4' /> Container Details
+								</button>
+							)}
 						</div>
 
 						<div className='py-1 bg-red-50/30'>
