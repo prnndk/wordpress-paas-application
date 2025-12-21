@@ -40,7 +40,7 @@ export class AdminService {
 		private readonly prisma: PrismaService,
 		private readonly dockerService: DockerService,
 		private readonly minioService: MinioService
-	) {}
+	) { }
 
 	async getAllUsers(): Promise<UserWithStats[]> {
 		return this.prisma.user.findMany({
@@ -260,6 +260,10 @@ export class AdminService {
 				admin: `/${tenant.slug}/wp-admin`,
 			},
 		};
+	}
+
+	async getAllServices() {
+		return this.dockerService.listAllServicesWithTasks();
 	}
 
 	private formatBytes(bytes: number): string {

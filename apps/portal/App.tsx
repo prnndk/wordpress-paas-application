@@ -65,6 +65,7 @@ import { AdminDashboard } from "./components/pages/AdminDashboard";
 import { AdminUsersPage } from "./components/pages/AdminUsersPage";
 import { AdminTenantsPage } from "./components/pages/AdminTenantsPage";
 import { AdminTenantDetailPage } from "./components/pages/AdminTenantDetailPage";
+import { AdminServicesPage } from "./components/pages/AdminServicesPage";
 import { MaintenancePage } from "./components/pages/MaintenancePage";
 
 const App: React.FC = () => {
@@ -147,6 +148,7 @@ const App: React.FC = () => {
 								<Route path='/admin/users' element={<AdminUsersPage />} />
 								<Route path='/admin/tenants' element={<AdminTenantsPage />} />
 								<Route path='/admin/tenants/:id' element={<AdminTenantDetailPage />} />
+								<Route path='/admin/services' element={<AdminServicesPage />} />
 								<Route
 									path='/admin/maintenance'
 									element={<MaintenancePage />}
