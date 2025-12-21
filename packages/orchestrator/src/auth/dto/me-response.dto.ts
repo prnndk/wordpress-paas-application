@@ -11,6 +11,9 @@ export class UserProfileDto {
 	@ApiProperty({ description: "Display name", nullable: true })
 	name!: string | null;
 
+	@ApiPropertyOptional({ description: "Full name" })
+	fullName?: string;
+
 	@ApiPropertyOptional({ description: "Username" })
 	username?: string;
 
@@ -19,6 +22,12 @@ export class UserProfileDto {
 
 	@ApiPropertyOptional({ description: "Avatar URL" })
 	avatarUrl?: string;
+
+	@ApiPropertyOptional({ description: "Timezone" })
+	timezone?: string;
+
+	@ApiPropertyOptional({ description: "Language preference" })
+	language?: string;
 
 	@ApiProperty({ description: "Account creation date" })
 	createdAt!: string;

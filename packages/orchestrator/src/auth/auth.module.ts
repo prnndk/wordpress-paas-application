@@ -10,6 +10,7 @@ import { TenantsModule } from "../tenants/tenants.module";
 import { ClusterModule } from "../cluster/cluster.module";
 import { AuditModule } from "../audit/audit.module";
 import { SubscriptionsModule } from "../subscriptions/subscriptions.module";
+import { StorageModule } from "../storage/storage.module";
 
 @Module({
 	imports: [
@@ -28,6 +29,7 @@ import { SubscriptionsModule } from "../subscriptions/subscriptions.module";
 		ClusterModule,
 		AuditModule,
 		SubscriptionsModule,
+		StorageModule,
 	],
 	controllers: [AuthController],
 	providers: [AuthService, JwtStrategy, UserRepository],

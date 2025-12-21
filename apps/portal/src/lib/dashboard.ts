@@ -173,7 +173,7 @@ export const dashboardService = {
 		),
 
 	/**
-	 * Get metrics for an instance
+	 * Get metrics for an instance (legacy Docker-based)
 	 */
 	getMetrics: (id: string, range: "1H" | "24H" | "7D" = "24H") =>
 		api.get<{
@@ -181,6 +181,60 @@ export const dashboardService = {
 			resources: { cpu: number; memory: number; storage: number };
 			specs: { cpuCores: number; ramGb: number; storageGb: number };
 		}>(`/tenants/${id}/metrics?range=${range}`),
+
+	/**
+	 * Get Prometheus-based real-time metrics for an instance
+	 */
+	getPrometheusMetrics: (id: string) =>
+		api.get<{
+			cpu: { current: number; avg: number; max: number };
+			memory: { current: number; limit: number; percent: number };
+			network: { rxBytes: number; txBytes: number; rxRate: number; txRate: number };
+			containerCount: number;
+			timestamp: string;
+		}>(`/monitoring/${id}/prometheus`),
+
+	/**
+	 * Get Prometheus historical data for charts
+	 */
+	getPrometheusHistory: (id: string, range: "1H" | "24H" | "7D" = "24H") =>
+		api.get<{
+			cpu: { timestamp: number; value: number }[];
+			memory: { timestamp: number; value: number }[];
+			network: {
+				rx: { timestamp: number; value: number }[];
+				tx: { timestamp: number; value: number }[];
+			};
+			range: string;
+		}>(`/monitoring/${id}/prometheus/history?range=${range}`),
+
+	/**
+	 * Get cluster-wide Prometheus metrics (admin)
+	 */
+	getClusterPrometheusMetrics: async () => {
+		const response = await api.get<{
+			success: boolean;
+			data: {
+				totalCpu: number;
+				totalMemory: number;
+				totalContainers: number;
+				nodeCount: number;
+				tenantCount: number;
+				requestsPerSecond: number;
+				avgLatency: number;
+			};
+		}>("/monitoring/cluster/overview");
+		return response.data;
+	},
+
+	/**
+	 * Check Prometheus health status
+	 */
+	getPrometheusHealth: () =>
+		api.get<{
+			healthy: boolean;
+			timestamp: string;
+		}>("/monitoring/prometheus/health"),
 
 	/**
 	 * Get container inspection details (env vars, mounts, resources, tasks)

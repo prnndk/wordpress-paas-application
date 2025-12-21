@@ -7,8 +7,11 @@ export interface User {
 	id: string;
 	email: string;
 	name: string | null;
+	fullName?: string;
 	roles?: string[];
 	avatarUrl?: string;
+	timezone?: string;
+	language?: string;
 	createdAt?: string;
 	lastLoginAt?: string;
 }
@@ -19,6 +22,7 @@ export interface LoginRequest {
 }
 
 export interface RegisterRequest {
+	fullName: string;
 	name?: string;
 	email: string;
 	password: string;

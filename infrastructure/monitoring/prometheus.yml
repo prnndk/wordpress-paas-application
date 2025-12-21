@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ===========================================
+  # Prometheus self-monitoring
+  # ===========================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ===========================================
+  # cAdvisor - Container metrics
+  # ===========================================
+  - job_name: 'cadvisor'
+    dns_sd_configs:
+      - names:
+          - 'tasks.monitoring_cadvisor'
+        type: 'A'
+        port: 8080
+
+  # ===========================================
+  # Traefik metrics - Request/latency data
+  # ===========================================
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['traefik:8080']
+
+  # ===========================================
+  # Node Exporter - Host/node metrics
+  # ===========================================
+  - job_name: 'node-exporter'
+    dns_sd_configs:
+      - names:
+          - 'tasks.monitoring_node-exporter'
+        type: 'A'
+        port: 9100

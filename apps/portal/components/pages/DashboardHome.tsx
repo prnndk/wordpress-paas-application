@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDashboard } from "../../context/DashboardContext";
 import { useAuth } from "../../context/AuthContext";
@@ -9,6 +9,7 @@ import {
 	type AuditSummary,
 } from "../../src/lib/auth";
 import { adminService, type AdminStats } from "../../src/lib/admin";
+import { dashboardService } from "../../src/lib/dashboard";
 import { AuditLogModal } from "../modals/AuditLogModal";
 import {
 	Plus,
@@ -25,6 +26,9 @@ import {
 	Users,
 	Shield,
 	Wrench,
+	Boxes,
+	Cpu,
+	Wifi,
 	AlertTriangle,
 	Clock,
 	X,
@@ -81,6 +85,16 @@ export const DashboardHome: React.FC = () => {
 	const [isDataReady, setIsDataReady] = useState(false);
 	const isAdmin = authUser?.roles?.includes("admin");
 
+	// Prometheus metrics state for aggregated user instance metrics
+	const [liveMetrics, setLiveMetrics] = useState<{
+		totalCpu: number;
+		totalMemory: number;
+		totalContainers: number;
+		networkRx: number;
+		networkTx: number;
+	} | null>(null);
+	const [metricsLoading, setMetricsLoading] = useState(false);
+
 	// Check if all essential data is loaded
 	useEffect(() => {
 		// Data is ready when loading is complete AND instances have been fetched (may be empty array)
@@ -128,6 +142,56 @@ export const DashboardHome: React.FC = () => {
 			adminService.getStats().then(setAdminStats).catch(console.error);
 		}
 	}, [isAdmin]);
+
+	// Fetch aggregated Prometheus metrics for all user instances
+	const fetchLiveMetrics = useCallback(async () => {
+		if (instances.length === 0) return;
+
+		try {
+			setMetricsLoading(true);
+			// Aggregate metrics from all running instances
+			const runningInstances = instances.filter(i => i.status === "running");
+			let totalCpu = 0;
+			let totalMemory = 0;
+			let totalContainers = 0;
+			let networkRx = 0;
+			let networkTx = 0;
+
+			// Fetch metrics for each instance
+			const metricsPromises = runningInstances.map(async (inst) => {
+				try {
+					const response = await dashboardService.getPrometheusMetrics(inst.id);
+					const data = (response as any).data || response;
+					return data;
+				} catch {
+					return null;
+				}
+			});
+
+			const results = await Promise.all(metricsPromises);
+			results.forEach((data) => {
+				if (data) {
+					totalCpu += data.cpu?.current || 0;
+					totalMemory += data.memory?.current || 0;
+					totalContainers += data.containerCount || 0;
+					networkRx += data.network?.rxRate || 0;
+					networkTx += data.network?.txRate || 0;
+				}
+			});
+
+			setLiveMetrics({ totalCpu, totalMemory, totalContainers, networkRx, networkTx });
+		} catch (error) {
+			console.error("Failed to fetch live metrics:", error);
+		} finally {
+			setMetricsLoading(false);
+		}
+	}, [instances]);
+
+	useEffect(() => {
+		fetchLiveMetrics();
+		const interval = setInterval(fetchLiveMetrics, 30000); // Refresh every 30s
+		return () => clearInterval(interval);
+	}, [fetchLiveMetrics]);
 
 	// Fetch announcements and upcoming maintenances
 	useEffect(() => {
@@ -932,7 +996,7 @@ export const DashboardHome: React.FC = () => {
 					</div>
 
 					{/* Management Tools */}
-					<div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+					<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
 						<button
 							onClick={() => navigate("/admin/users")}
 							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
@@ -972,6 +1036,25 @@ export const DashboardHome: React.FC = () => {
 						</button>
 
 						<button
+							onClick={() => navigate("/admin/services")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
+							<div className='flex items-center gap-4'>
+								<div className='p-3 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-cyan-50 group-hover:text-cyan-600 transition-colors'>
+									<Boxes className='w-5 h-5' />
+								</div>
+								<div>
+									<h3 className='font-bold text-slate-900 group-hover:text-cyan-600 transition-colors'>
+										Containers
+									</h3>
+									<p className='text-xs text-slate-500'>
+										View all Docker services
+									</p>
+								</div>
+							</div>
+							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-all' />
+						</button>
+
+						<button
 							onClick={() => navigate("/admin/maintenance")}
 							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
 							<div className='flex items-center gap-4'>
@@ -989,6 +1072,68 @@ export const DashboardHome: React.FC = () => {
 							</div>
 							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all' />
 						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Live Metrics from Prometheus */}
+			{instances.length > 0 && (
+				<div className='bg-gradient-to-r from-slate-900 to-slate-800 p-6 rounded-xl shadow-lg'>
+					<div className='flex items-center justify-between mb-4'>
+						<div className='flex items-center gap-3'>
+							<div className='p-2 bg-green-500/20 rounded-lg'>
+								<Activity className='w-5 h-5 text-green-400' />
+							</div>
+							<div>
+								<h3 className='text-lg font-bold text-white'>Live Usage</h3>
+								<p className='text-sm text-slate-400'>Real-time metrics from Prometheus</p>
+							</div>
+						</div>
+						{metricsLoading && (
+							<Loader2 className='w-4 h-4 animate-spin text-slate-400' />
+						)}
+					</div>
+
+					<div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+						{/* CPU */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Cpu className='w-3.5 h-3.5' /> CPU USAGE
+							</div>
+							<p className='text-2xl font-bold text-white'>
+								{liveMetrics ? `${liveMetrics.totalCpu.toFixed(1)}%` : '--'}
+							</p>
+						</div>
+
+						{/* Memory */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Server className='w-3.5 h-3.5' /> MEMORY
+							</div>
+							<p className='text-2xl font-bold text-white'>
+								{liveMetrics ? `${(liveMetrics.totalMemory / (1024 * 1024 * 1024)).toFixed(2)} GB` : '--'}
+							</p>
+						</div>
+
+						{/* Network RX */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Wifi className='w-3.5 h-3.5' /> NET IN
+							</div>
+							<p className='text-2xl font-bold text-emerald-400'>
+								{liveMetrics ? `${(liveMetrics.networkRx / 1024).toFixed(1)} KB/s` : '--'}
+							</p>
+						</div>
+
+						{/* Network TX */}
+						<div className='bg-slate-800/50 p-4 rounded-xl border border-slate-700'>
+							<div className='flex items-center gap-2 text-slate-400 text-xs font-semibold mb-2'>
+								<Wifi className='w-3.5 h-3.5' /> NET OUT
+							</div>
+							<p className='text-2xl font-bold text-blue-400'>
+								{liveMetrics ? `${(liveMetrics.networkTx / 1024).toFixed(1)} KB/s` : '--'}
+							</p>
+						</div>
 					</div>
 				</div>
 			)}

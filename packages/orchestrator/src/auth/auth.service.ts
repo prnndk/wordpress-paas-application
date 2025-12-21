@@ -40,7 +40,8 @@ export class AuthService {
 	async register(
 		email: string,
 		password: string,
-		name?: string
+		name?: string,
+		fullName?: string
 	): Promise<AuthTokens> {
 		// Check if user exists
 		const existingUser = await this.userRepository.findByEmail(email);
@@ -55,7 +56,8 @@ export class AuthService {
 		const user = await this.userRepository.create({
 			email,
 			passwordHash,
-			name: name || null,
+			name: name || fullName || null,
+			fullName: fullName || name || null,
 		});
 
 		// Default role is 'user'
@@ -78,6 +80,9 @@ export class AuthService {
 		if (!isValid) {
 			throw new UnauthorizedException("Invalid credentials");
 		}
+
+		// Update last login timestamp
+		await this.userRepository.update(user.id, { lastLoginAt: new Date() });
 
 		return this.generateTokens({
 			id: user.id,
@@ -109,6 +114,80 @@ export class AuthService {
 	}
 
 	/**
+	 * Update user profile (name, fullName, avatarUrl)
+	 */
+	async updateProfile(
+		userId: string,
+		data: { fullName?: string; name?: string; avatarUrl?: string }
+	): Promise<{ success: boolean }> {
+		await this.userRepository.update(userId, data);
+		return { success: true };
+	}
+
+	/**
+	 * Update user settings (timezone, language)
+	 */
+	async updateSettings(
+		userId: string,
+		data: { timezone?: string; language?: string }
+	): Promise<{ success: boolean }> {
+		await this.userRepository.update(userId, data);
+		return { success: true };
+	}
+
+	/**
+	 * Change user password
+	 */
+	async changePassword(
+		userId: string,
+		currentPassword: string,
+		newPassword: string
+	): Promise<{ success: boolean }> {
+		const user = await this.userRepository.findById(userId);
+
+		if (!user) {
+			throw new UnauthorizedException("User not found");
+		}
+
+		const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+
+		if (!isValid) {
+			throw new UnauthorizedException("Current password is incorrect");
+		}
+
+		const passwordHash = await bcrypt.hash(newPassword, 12);
+		await this.userRepository.update(userId, { passwordHash });
+
+		return { success: true };
+	}
+
+	/**
+	 * Delete user account permanently
+	 * Requires password verification for security
+	 */
+	async deleteAccount(
+		userId: string,
+		password: string
+	): Promise<{ success: boolean }> {
+		const user = await this.userRepository.findById(userId);
+
+		if (!user) {
+			throw new UnauthorizedException("User not found");
+		}
+
+		const isValid = await bcrypt.compare(password, user.passwordHash);
+
+		if (!isValid) {
+			throw new UnauthorizedException("Password is incorrect");
+		}
+
+		// Delete user (cascade will delete related tenants due to schema)
+		await this.userRepository.delete(userId);
+
+		return { success: true };
+	}
+
+	/**
 	 * Get full user profile with optional aggregated data
 	 */
 	async getFullUserProfile(
@@ -127,8 +206,13 @@ export class AuthService {
 				id: user.id,
 				email: user.email,
 				name: user.name,
+				fullName: user.fullName || undefined,
+				avatarUrl: user.avatarUrl || undefined,
+				timezone: user.timezone || "UTC",
+				language: user.language || "en",
 				roles: [user.role], // Use actual role from DB
 				createdAt: user.createdAt?.toISOString() || new Date().toISOString(),
+				lastLoginAt: user.lastLoginAt?.toISOString() || undefined,
 			},
 		};
 

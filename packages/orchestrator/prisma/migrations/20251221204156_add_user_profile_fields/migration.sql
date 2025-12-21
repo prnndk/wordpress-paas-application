@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE `users` ADD COLUMN `avatar_url` VARCHAR(191) NULL,
+    ADD COLUMN `full_name` VARCHAR(191) NULL,
+    ADD COLUMN `language` VARCHAR(191) NOT NULL DEFAULT 'en',
+    ADD COLUMN `last_login_at` DATETIME(3) NULL,
+    ADD COLUMN `timezone` VARCHAR(191) NOT NULL DEFAULT 'UTC';
