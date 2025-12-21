@@ -24,6 +24,7 @@ import {
 	StopCircle,
 	Users,
 	Shield,
+	Hammer,
 } from "lucide-react";
 
 import { LogViewerModal } from "../modals/LogViewerModal";
@@ -89,6 +90,14 @@ export const InstanceList: React.FC = () => {
 		instanceId: string;
 		instanceName: string;
 	}>({ isOpen: false, action: null, instanceId: "", instanceName: "" });
+
+	// Rebuild confirmation state
+	const [rebuildConfirm, setRebuildConfirm] = useState<{
+		isOpen: boolean;
+		instanceId: string;
+		instanceName: string;
+	}>({ isOpen: false, instanceId: "", instanceName: "" });
+	const [rebuildLoading, setRebuildLoading] = useState(false);
 
 	const [bulkActionLoading, setBulkActionLoading] = useState(false);
 	const [toast, setToast] = useState<{ message: string; visible: boolean }>({
@@ -258,6 +267,13 @@ export const InstanceList: React.FC = () => {
 				break;
 			case "view-details":
 				navigate(`/instance/${instance.id}`);
+				break;
+			case "rebuild":
+				setRebuildConfirm({
+					isOpen: true,
+					instanceId: instance.id,
+					instanceName: instance.name,
+				});
 				break;
 		}
 	};
@@ -437,6 +453,92 @@ export const InstanceList: React.FC = () => {
 				onConfirm={handleDeleteConfirm}
 				instanceName={deleteConfirm.instanceName}
 			/>
+
+			{/* Log Viewer Modal */}
+			<LogViewerModal
+				isOpen={logViewer.isOpen}
+				onClose={() => setLogViewer((prev) => ({ ...prev, isOpen: false }))}
+				instanceId={logViewer.instanceId}
+				instanceName={logViewer.instanceName}
+			/>
+
+			{/* Rebuild Confirmation Modal */}
+			{rebuildConfirm.isOpen &&
+				createPortal(
+					<div className='fixed inset-0 flex items-center justify-center z-[9999]'>
+						<div
+							className='absolute inset-0 bg-black/50 backdrop-blur-sm'
+							onClick={() =>
+								setRebuildConfirm((prev) => ({ ...prev, isOpen: false }))
+							}></div>
+						<div className='relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-in zoom-in-95 fade-in duration-200'>
+							<div className='text-center mb-6'>
+								<div className='w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-amber-100 text-amber-600'>
+									<Hammer className='w-8 h-8' />
+								</div>
+								<h3 className='text-xl font-bold text-slate-900'>
+									Rebuild Instance?
+								</h3>
+								<p className='text-slate-500 mt-2'>
+									This will recreate containers with the latest image. Your data
+									will be preserved.
+								</p>
+								<p className='text-sm text-slate-400 mt-1'>
+									Instance:{" "}
+									<span className='font-semibold text-slate-700'>
+										{rebuildConfirm.instanceName}
+									</span>
+								</p>
+							</div>
+							<div className='flex gap-3'>
+								<button
+									onClick={() =>
+										setRebuildConfirm((prev) => ({ ...prev, isOpen: false }))
+									}
+									className='flex-1 px-4 py-3 text-sm font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors'>
+									Cancel
+								</button>
+								<button
+									onClick={async () => {
+										const { instanceId, instanceName } = rebuildConfirm;
+										setRebuildConfirm((prev) => ({ ...prev, isOpen: false }));
+										setRebuildLoading(true);
+										try {
+											if (viewMode === "my") {
+												updateInstanceStatus(instanceId, "provisioning");
+											} else {
+												setAdminTenants((prev) =>
+													prev.map((t) =>
+														t.id === instanceId
+															? { ...t, status: "provisioning" }
+															: t
+													)
+												);
+											}
+											showToast(`Rebuilding ${instanceName}...`);
+											await dashboardService.rebuildTenant(instanceId);
+											showToast("Rebuild initiated successfully");
+											setTimeout(() => {
+												if (viewMode === "all") fetchAdminTenants();
+												else refreshInstances();
+											}, 2000);
+										} catch (err: any) {
+											showToast(`Rebuild failed: ${err.message}`);
+											if (viewMode === "all") fetchAdminTenants();
+											else refreshInstances();
+										} finally {
+											setRebuildLoading(false);
+										}
+									}}
+									disabled={rebuildLoading}
+									className='flex-1 px-4 py-3 text-sm font-semibold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50'>
+									{rebuildLoading ? "Rebuilding..." : "Rebuild"}
+								</button>
+							</div>
+						</div>
+					</div>,
+					document.body
+				)}
 
 			{/* Action Confirmation Modal */}
 			{actionConfirm.isOpen &&

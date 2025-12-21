@@ -38,6 +38,7 @@ import {
 	Shield,
 	Layers,
 	Play,
+	Hammer,
 } from "lucide-react";
 
 export const InstanceDetails: React.FC = () => {
@@ -78,7 +79,7 @@ export const InstanceDetails: React.FC = () => {
 		left: number;
 	} | null>(null);
 	const [modalType, setModalType] = useState<
-		"none" | "logs" | "backup" | "delete"
+		"none" | "logs" | "backup" | "delete" | "rebuild"
 	>("none");
 
 	// Ref to track if we've initialized the replicas state from DB
@@ -232,6 +233,8 @@ export const InstanceDetails: React.FC = () => {
 			setActiveTab("backups");
 		} else if (action === "logs") {
 			setModalType("logs");
+		} else if (action === "rebuild") {
+			setModalType("rebuild");
 		} else if (action === "delete") {
 			setModalType("delete");
 		} else if (["start", "stop", "restart"].includes(action)) {
@@ -290,6 +293,7 @@ export const InstanceDetails: React.FC = () => {
 			<LogViewerModal
 				isOpen={modalType === "logs"}
 				onClose={() => setModalType("none")}
+				instanceId={instance.id}
 				instanceName={instance.name}
 			/>
 			<BackupManagerModal
@@ -303,6 +307,67 @@ export const InstanceDetails: React.FC = () => {
 				onConfirm={handleDeleteConfirm}
 				instanceName={instance.name}
 			/>
+
+			{/* Rebuild Confirmation Modal */}
+			{modalType === "rebuild" &&
+				createPortal(
+					<div className='fixed inset-0 flex items-center justify-center z-[9999]'>
+						<div
+							className='absolute inset-0 bg-black/50 backdrop-blur-sm'
+							onClick={() => setModalType("none")}></div>
+						<div className='relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-in zoom-in-95 fade-in duration-200'>
+							<div className='text-center mb-6'>
+								<div className='w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-amber-100 text-amber-600'>
+									<Hammer className='w-8 h-8' />
+								</div>
+								<h3 className='text-xl font-bold text-slate-900'>
+									Rebuild Instance?
+								</h3>
+								<p className='text-slate-500 mt-2'>
+									This will recreate containers with the latest image. Your data
+									will be preserved.
+								</p>
+								<p className='text-sm text-slate-400 mt-1'>
+									Instance:{" "}
+									<span className='font-semibold text-slate-700'>
+										{instance.name}
+									</span>
+								</p>
+							</div>
+							<div className='flex gap-3'>
+								<button
+									onClick={() => setModalType("none")}
+									className='flex-1 px-4 py-3 text-sm font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors'>
+									Cancel
+								</button>
+								<button
+									onClick={async () => {
+										setModalType("none");
+										setActionLoading(true);
+										try {
+											updateInstanceStatus(id!, "provisioning");
+											showToast("Rebuilding instance...");
+											await dashboardService.rebuildTenant(id!);
+											showToast("Rebuild initiated successfully");
+											setTimeout(() => {
+												refreshInstances(true);
+												fetchInstanceDetails(true);
+											}, 2000);
+										} catch (err: any) {
+											showToast(`Rebuild failed: ${err.message}`);
+										} finally {
+											setActionLoading(false);
+										}
+									}}
+									disabled={actionLoading}
+									className='flex-1 px-4 py-3 text-sm font-semibold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50'>
+									{actionLoading ? "Rebuilding..." : "Rebuild"}
+								</button>
+							</div>
+						</div>
+					</div>,
+					document.body
+				)}
 
 			{/* Toast */}
 			{toast.visible &&
@@ -692,6 +757,11 @@ export const InstanceDetails: React.FC = () => {
 								onClick={() => handleMenuAction("logs")}
 								className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
 								<Terminal className='w-4 h-4 text-slate-400' /> View Logs
+							</button>
+							<button
+								onClick={() => handleMenuAction("rebuild")}
+								className='w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2'>
+								<Hammer className='w-4 h-4' /> Rebuild
 							</button>
 							<button
 								onClick={() => handleMenuAction("backups")}

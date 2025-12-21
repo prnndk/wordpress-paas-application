@@ -8,6 +8,7 @@ import {
 	type ClusterSummary,
 	type AuditSummary,
 } from "../../src/lib/auth";
+import { adminService, type AdminStats } from "../../src/lib/admin";
 import { AuditLogModal } from "../modals/AuditLogModal";
 import {
 	Plus,
@@ -21,6 +22,9 @@ import {
 	BarChart3,
 	ChevronRight,
 	CreditCard,
+	Users,
+	Shield,
+	Wrench,
 } from "lucide-react";
 
 export const DashboardHome: React.FC = () => {
@@ -41,6 +45,8 @@ export const DashboardHome: React.FC = () => {
 	const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+	const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+	const isAdmin = authUser?.roles?.includes("admin");
 
 	// Fetch data from cached profile or refresh
 	useEffect(() => {
@@ -76,6 +82,13 @@ export const DashboardHome: React.FC = () => {
 			fetchDashboardData();
 		}
 	}, [authUser?.id]);
+
+	// Fetch admin stats if user is admin
+	useEffect(() => {
+		if (isAdmin) {
+			adminService.getStats().then(setAdminStats).catch(console.error);
+		}
+	}, [isAdmin]);
 
 	// Calculate dynamic stats from real data
 	const activeCount = instances.filter((i) => i.status === "running").length;
@@ -281,6 +294,140 @@ export const DashboardHome: React.FC = () => {
 					</div>
 				</div>
 			</div>
+
+			{/* Admin Console Section - Only for admins */}
+			{isAdmin && adminStats && (
+				<div className='space-y-6'>
+					{/* Admin Stats Grid */}
+					<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
+						<button
+							onClick={() => navigate("/admin/users")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-left group'>
+							<div className='flex items-center justify-between mb-3'>
+								<div className='p-2.5 rounded-xl bg-blue-100 text-blue-600 group-hover:scale-110 transition-transform'>
+									<Users className='w-5 h-5' />
+								</div>
+								<ChevronRight className='w-4 h-4 text-slate-300 group-hover:text-slate-400' />
+							</div>
+							<p className='text-xs font-medium text-slate-500'>Total Users</p>
+							<p className='text-2xl font-bold text-slate-900 mt-1 group-hover:text-indigo-600 transition-colors'>
+								{adminStats.totalUsers}
+							</p>
+						</button>
+
+						<button
+							onClick={() => navigate("/dashboard/instances?view=all")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-left group'>
+							<div className='flex items-center justify-between mb-3'>
+								<div className='p-2.5 rounded-xl bg-green-100 text-green-600 group-hover:scale-110 transition-transform'>
+									<Server className='w-5 h-5' />
+								</div>
+								<ChevronRight className='w-4 h-4 text-slate-300 group-hover:text-slate-400' />
+							</div>
+							<p className='text-xs font-medium text-slate-500'>
+								Total Tenants
+							</p>
+							<p className='text-2xl font-bold text-slate-900 mt-1 group-hover:text-indigo-600 transition-colors'>
+								{adminStats.totalTenants}
+							</p>
+						</button>
+
+						<button
+							onClick={() => navigate("/dashboard/instances?view=all")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-left group'>
+							<div className='flex items-center justify-between mb-3'>
+								<div className='p-2.5 rounded-xl bg-purple-100 text-purple-600 group-hover:scale-110 transition-transform'>
+									<Activity className='w-5 h-5' />
+								</div>
+								<ChevronRight className='w-4 h-4 text-slate-300 group-hover:text-slate-400' />
+							</div>
+							<p className='text-xs font-medium text-slate-500'>
+								Running Instances
+							</p>
+							<p className='text-2xl font-bold text-slate-900 mt-1 group-hover:text-indigo-600 transition-colors'>
+								{adminStats.runningTenants}
+							</p>
+						</button>
+
+						<button
+							onClick={() => navigate("/admin/maintenance")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-left group'>
+							<div className='flex items-center justify-between mb-3'>
+								<div className='p-2.5 rounded-xl bg-orange-100 text-orange-600 group-hover:scale-110 transition-transform'>
+									<Wrench className='w-5 h-5' />
+								</div>
+								<ChevronRight className='w-4 h-4 text-slate-300 group-hover:text-slate-400' />
+							</div>
+							<p className='text-xs font-medium text-slate-500'>
+								Active Announcements
+							</p>
+							<p className='text-2xl font-bold text-slate-900 mt-1 group-hover:text-indigo-600 transition-colors'>
+								{adminStats.activeAnnouncements}
+							</p>
+						</button>
+					</div>
+
+					{/* Management Tools */}
+					<div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+						<button
+							onClick={() => navigate("/admin/users")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
+							<div className='flex items-center gap-4'>
+								<div className='p-3 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'>
+									<Users className='w-5 h-5' />
+								</div>
+								<div>
+									<h3 className='font-bold text-slate-900 group-hover:text-indigo-600 transition-colors'>
+										User Management
+									</h3>
+									<p className='text-xs text-slate-500'>
+										View, enable/disable users
+									</p>
+								</div>
+							</div>
+							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all' />
+						</button>
+
+						<button
+							onClick={() => navigate("/dashboard/instances?view=all")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
+							<div className='flex items-center gap-4'>
+								<div className='p-3 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'>
+									<Server className='w-5 h-5' />
+								</div>
+								<div>
+									<h3 className='font-bold text-slate-900 group-hover:text-indigo-600 transition-colors'>
+										Tenant Management
+									</h3>
+									<p className='text-xs text-slate-500'>
+										View tenants, manage status
+									</p>
+								</div>
+							</div>
+							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all' />
+						</button>
+
+						<button
+							onClick={() => navigate("/admin/maintenance")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
+							<div className='flex items-center gap-4'>
+								<div className='p-3 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'>
+									<Wrench className='w-5 h-5' />
+								</div>
+								<div>
+									<h3 className='font-bold text-slate-900 group-hover:text-indigo-600 transition-colors'>
+										Maintenance
+									</h3>
+									<p className='text-xs text-slate-500'>
+										Rolling updates, announcements
+									</p>
+								</div>
+							</div>
+							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all' />
+						</button>
+					</div>
+				</div>
+			)}
 
 			{/* Main Content Area */}
 			<div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>

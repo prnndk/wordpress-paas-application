@@ -135,6 +135,21 @@ export const dashboardService = {
 	restartTenant: (id: string) => api.post(`/tenants/${id}/restart`, {}),
 
 	/**
+	 * Rebuild an instance (force recreate containers with latest image)
+	 */
+	rebuildTenant: (id: string) =>
+		api.post<{ success: boolean; message: string }>(
+			`/tenants/${id}/rebuild`,
+			{}
+		),
+
+	/**
+	 * Get logs for an instance
+	 */
+	getLogs: (id: string, tail: number = 100) =>
+		api.get<{ logs: string }>(`/tenants/${id}/logs?tail=${tail}`),
+
+	/**
 	 * Get single tenant details
 	 */
 	getTenant: (id: string) => api.get<Tenant>(`/tenants/${id}`),
