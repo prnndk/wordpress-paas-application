@@ -10,7 +10,6 @@ import {
 } from "recharts";
 import {
 	ExternalLink,
-	RotateCw,
 	Copy,
 	Eye,
 	EyeOff,
@@ -40,7 +39,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 		cpu: number;
 		memory: number;
 		storage: number;
-	}>({ cpu: 0, memory: 0, storage: 0 });
+		uptime?: number;
+		uptimeSeconds?: number;
+	}>({ cpu: 0, memory: 0, storage: 0, uptime: 100 });
 	const [specs, setSpecs] = useState<{
 		cpuCores: number;
 		ramGb: number;
@@ -105,20 +106,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 		}
 	};
 
-	const handleRestartPhp = async () => {
-		if (isRestarting || !instance?.id) return;
-
-		setIsRestarting(true);
-		try {
-			const result = await dashboardService.restartPhp(instance.id);
-			showToast(result.message || "PHP restarted successfully");
-		} catch (error: any) {
-			showToast(error.message || "Failed to restart PHP");
-		} finally {
-			setIsRestarting(false);
-		}
-	};
-
 	// Helper for resource colors
 	const getLoadColor = (percent: number) => {
 		if (percent > 90) return "bg-red-500";
@@ -128,6 +115,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 
 	// Get site URL from instance
 	const siteUrl = instance.endpoints?.site || `/${instance.slug}/`;
+
+	// Extract IP/Hostname from siteUrl
+	let displayIp = instance.ip;
+	if (instance.endpoints?.site) {
+		try {
+			const url = new URL(instance.endpoints.site);
+			displayIp = url.hostname;
+		} catch (e) {
+			// ignore invalid url
+		}
+	}
+	if (!displayIp) displayIp = "N/A";
 
 	// Get database info from instance
 	const dbHost = instance.db?.host || "mysql-master";
@@ -167,8 +166,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 							</div>
 							<div
 								className='flex items-center gap-2 text-xs text-slate-500 cursor-pointer hover:text-slate-700 group'
-								onClick={() => handleCopy(instance.ip || "", "ip")}>
-								<span className='font-mono'>{instance.ip || "N/A"}</span>
+								onClick={() => handleCopy(displayIp, "ip")}>
+								<span className='font-mono'>{displayIp}</span>
 								{copiedField === "ip" ? (
 									<Check className='w-3 h-3 text-green-500' />
 								) : (
@@ -182,7 +181,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 						<span className='text-xs font-bold text-slate-400 uppercase tracking-wider'>
 							Uptime
 						</span>
-						<p className='text-sm font-bold text-green-600'>99.99%</p>
+						<p className='text-sm font-bold text-green-600'>
+							{typeof resources.uptime !== "undefined"
+								? `${resources.uptime}%`
+								: "100%"}
+						</p>
 					</div>
 				</div>
 
@@ -198,18 +201,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 							}`}
 						/>
 						{isPurging ? "Purging..." : "Purge Cache"}
-					</button>
-
-					<button
-						onClick={handleRestartPhp}
-						disabled={isRestarting}
-						className='flex-1 md:flex-none inline-flex justify-center items-center px-4 py-2 border border-slate-200 shadow-sm text-xs font-bold rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'>
-						<RotateCw
-							className={`w-3 h-3 mr-2 ${
-								isRestarting ? "animate-spin text-indigo-600" : "text-slate-400"
-							}`}
-						/>
-						{isRestarting ? "Restarting..." : "Restart PHP"}
 					</button>
 				</div>
 			</div>
@@ -489,30 +480,89 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 					</div>
 
 					{/* WordPress Admin Email */}
-					{wpAdminEmail && (
+					{(wpAdminEmail || instance.wpAdminUser) && (
 						<div className='pt-4 border-t border-slate-100'>
 							<h4 className='text-xs font-bold text-slate-400 uppercase tracking-wider mb-3'>
 								WordPress Admin
 							</h4>
-							<div className='relative group max-w-md'>
-								<label className='text-[10px] font-bold text-slate-500 uppercase mb-1 block'>
-									Admin Email
-								</label>
-								<div className='flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2'>
-									<Mail className='w-3 h-3 text-slate-400 mr-2' />
-									<code className='text-xs font-mono text-slate-700 flex-1 truncate'>
-										{wpAdminEmail}
-									</code>
-									<button
-										onClick={() => handleCopy(wpAdminEmail, "wp-email")}
-										className='ml-2 text-slate-400 hover:text-indigo-600'>
-										{copiedField === "wp-email" ? (
-											<Check className='w-3 h-3' />
-										) : (
-											<Copy className='w-3 h-3' />
-										)}
-									</button>
-								</div>
+							<div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+								{instance.wpAdminUser && (
+									<div className='relative group'>
+										<label className='text-[10px] font-bold text-slate-500 uppercase mb-1 block'>
+											Admin Username
+										</label>
+										<div className='flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2'>
+											<code className='text-xs font-mono text-slate-700 flex-1 truncate'>
+												{instance.wpAdminUser}
+											</code>
+											<button
+												onClick={() =>
+													handleCopy(instance.wpAdminUser, "wp-user")
+												}
+												className='ml-2 text-slate-400 hover:text-indigo-600'>
+												{copiedField === "wp-user" ? (
+													<Check className='w-3 h-3' />
+												) : (
+													<Copy className='w-3 h-3' />
+												)}
+											</button>
+										</div>
+									</div>
+								)}
+								{instance.wpAdminPassword && (
+									<div className='relative group'>
+										<label className='text-[10px] font-bold text-slate-500 uppercase mb-1 block'>
+											Admin Password
+										</label>
+										<div className='flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2'>
+											<code className='text-xs font-mono text-slate-700 flex-1 truncate'>
+												{showDbPass ? instance.wpAdminPassword : "••••••••••••"}
+											</code>
+											<button
+												onClick={() => setShowDbPass(!showDbPass)}
+												className='ml-2 text-slate-400 hover:text-slate-600'>
+												{showDbPass ? (
+													<EyeOff className='w-3 h-3' />
+												) : (
+													<Eye className='w-3 h-3' />
+												)}
+											</button>
+											<button
+												onClick={() =>
+													handleCopy(instance.wpAdminPassword, "wp-pass")
+												}
+												className='ml-2 text-slate-400 hover:text-indigo-600'>
+												{copiedField === "wp-pass" ? (
+													<Check className='w-3 h-3' />
+												) : (
+													<Copy className='w-3 h-3' />
+												)}
+											</button>
+										</div>
+									</div>
+								)}
+								{wpAdminEmail && (
+									<div className='relative group'>
+										<label className='text-[10px] font-bold text-slate-500 uppercase mb-1 block'>
+											Admin Email
+										</label>
+										<div className='flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2'>
+											<Mail className='w-3 h-3 text-slate-400 mr-2' />
+											<code className='text-xs font-mono text-slate-700 flex-1 truncate'>
+												{wpAdminEmail}
+											</code>
+											<button
+												onClick={() => handleCopy(wpAdminEmail, "wp-email")}
+												className='ml-2 text-slate-400 hover:text-indigo-600'>
+												{copiedField === "wp-email" ? (
+													<Check className='w-3 h-3' />
+												) : (
+													<Copy className='w-3 h-3' />
+												)}
+											</button>
+										</div>
+									</div>
+								)}
 							</div>
 						</div>
 					)}

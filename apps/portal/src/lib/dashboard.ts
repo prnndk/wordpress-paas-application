@@ -38,18 +38,20 @@ export interface PaymentMethod {
 
 export interface Tenant {
 	id: string;
+	userId?: string;
 	name: string;
 	slug: string;
 	region?: string;
 	status: string;
 	endpoints?: TenantEndpoints;
-	userId?: string;
 	createdAt: string;
 	updatedAt?: string;
 	wpAdminUser?: string;
 	wpAdminPassword?: string;
 	wpAdminEmail?: string;
 	planId?: string;
+	replicas?: number;
+	runningReplicas?: number;
 	specs?: {
 		cpuCores: number;
 		ramGb: number;
@@ -62,6 +64,7 @@ export interface Tenant {
 		user: string;
 		password: string;
 	};
+	storageUsage?: { bytes: number; files: number };
 }
 
 /**

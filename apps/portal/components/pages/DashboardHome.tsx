@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useDashboard } from "../DashboardLayout";
+import { useDashboard } from "../../context/DashboardContext";
 import { useAuth } from "../../context/AuthContext";
 import {
 	getCachedProfile,
@@ -22,7 +22,6 @@ import {
 	ChevronRight,
 	CreditCard,
 } from "lucide-react";
-import { AdminDashboard } from "./AdminDashboard";
 
 export const DashboardHome: React.FC = () => {
 	const navigate = useNavigate();
@@ -35,11 +34,6 @@ export const DashboardHome: React.FC = () => {
 		subscription,
 	} = useDashboard();
 	const { user: authUser } = useAuth();
-
-	// Redirect to Admin Dashboard if user is admin
-	if (user?.roles?.includes("admin")) {
-		return <AdminDashboard />;
-	}
 
 	const [clusterHealth, setClusterHealth] = useState<ClusterSummary | null>(
 		null

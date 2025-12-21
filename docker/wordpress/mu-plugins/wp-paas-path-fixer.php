@@ -54,7 +54,13 @@ if (!empty($wp_paas_path_prefix)) {
             // Ensure redirects keep the prefix
             if (strpos($location, $prefix) === false) {
                 $parsed = parse_url($location);
-                if (isset($parsed['path']) && strpos($parsed['path'], '/wp-') === 0) {
+                // Catch all WP-related paths: /wp-admin, /wp-login.php, /wp-content, etc.
+                if (isset($parsed['path']) && (
+                    strpos($parsed['path'], '/wp-admin') === 0 ||
+                    strpos($parsed['path'], '/wp-login') === 0 ||
+                    strpos($parsed['path'], '/wp-content') === 0 ||
+                    strpos($parsed['path'], '/wp-includes') === 0
+                )) {
                     // This is a WordPress internal redirect without prefix
                     $scheme = isset($parsed['scheme']) ? $parsed['scheme'] . '://' : 'http://';
                     $host = isset($parsed['host']) ? $parsed['host'] : $_SERVER['HTTP_HOST'];

@@ -343,70 +343,171 @@ export class DockerService implements OnModuleInit {
 		memoryUsage: number;
 		memoryLimit: number;
 		memoryPercent: number;
+		uptime: number; // Seconds since started
 	} | null> {
 		try {
 			const service = this.docker.getService(nameOrId);
 			const info = await service.inspect();
 			const serviceName = info.Spec?.Name || nameOrId;
 
+			// Get tasks to find the running container
 			const tasks = await this.docker.listTasks({
 				filters: { service: [serviceName], "desired-state": ["running"] },
 			});
 
-			if (tasks.length === 0) {
+			// Filter for actually running tasks with a container ID
+			const runningTask = tasks.find(
+				(task) =>
+					task.Status?.State === "running" &&
+					task.Status?.ContainerStatus?.ContainerID
+			);
+
+			if (!runningTask || !runningTask.Status?.ContainerStatus?.ContainerID) {
 				return null;
 			}
 
-			let totalCpu = 0;
-			let totalMemory = 0;
-			let totalMemoryLimit = 0;
-			let containerCount = 0;
+			const containerId = runningTask.Status.ContainerStatus.ContainerID;
+			const container = this.docker.getContainer(containerId);
+			const stats = await container.stats({ stream: false });
+			const containerInfo = await container.inspect();
 
-			for (const task of tasks) {
-				if (task.Status?.ContainerStatus?.ContainerID) {
-					try {
-						const container = this.docker.getContainer(
-							task.Status.ContainerStatus.ContainerID
-						);
-						const stats = await container.stats({ stream: false });
+			// Calculate CPU %
+			const cpuDelta =
+				stats.cpu_stats.cpu_usage.total_usage -
+				(stats.precpu_stats?.cpu_usage?.total_usage || 0);
+			const systemDelta =
+				stats.cpu_stats.system_cpu_usage -
+				(stats.precpu_stats?.system_cpu_usage || 0);
+			const cpuCount = stats.cpu_stats.online_cpus || 1;
 
-						const cpuDelta =
-							stats.cpu_stats.cpu_usage.total_usage -
-							(stats.precpu_stats?.cpu_usage?.total_usage || 0);
-						const systemDelta =
-							stats.cpu_stats.system_cpu_usage -
-							(stats.precpu_stats?.system_cpu_usage || 0);
-						const cpuCount = stats.cpu_stats.online_cpus || 1;
-
-						if (systemDelta > 0) {
-							totalCpu += (cpuDelta / systemDelta) * cpuCount * 100;
-						}
-
-						totalMemory += stats.memory_stats.usage || 0;
-						totalMemoryLimit += stats.memory_stats.limit || 0;
-						containerCount++;
-					} catch (err) {
-						this.logger.warn(`Failed to get stats for container: ${err}`);
-					}
-				}
+			let cpuPercent = 0;
+			if (systemDelta > 0) {
+				cpuPercent = (cpuDelta / systemDelta) * cpuCount * 100;
 			}
 
-			if (containerCount === 0) {
-				return null;
-			}
+			// Calculate Uptime (now - StartedAt)
+			const startedAt = new Date(containerInfo.State.StartedAt).getTime();
+			const uptime = Math.floor((Date.now() - startedAt) / 1000);
 
 			return {
-				cpuPercent: Math.round(totalCpu * 100) / 100,
-				memoryUsage: totalMemory,
-				memoryLimit: totalMemoryLimit,
+				cpuPercent: Math.round(cpuPercent * 100) / 100,
+				memoryUsage: stats.memory_stats.usage || 0,
+				memoryLimit: stats.memory_stats.limit || 0,
 				memoryPercent:
-					totalMemoryLimit > 0
-						? Math.round((totalMemory / totalMemoryLimit) * 10000) / 100
+					stats.memory_stats.limit > 0
+						? Math.round(
+								((stats.memory_stats.usage || 0) / stats.memory_stats.limit) *
+									10000
+						  ) / 100
 						: 0,
+				uptime: uptime > 0 ? uptime : 0,
 			};
-		} catch (error) {
-			this.logger.warn(`Failed to get service stats for ${nameOrId}: ${error}`);
+		} catch (error: any) {
+			// 404 errors are expected for stopped/deleted instances - use debug level
+			const is404 =
+				error?.statusCode === 404 || error?.message?.includes("404");
+			if (is404) {
+				this.logger.debug(
+					`Service stats unavailable for ${nameOrId} (not running)`
+				);
+			} else {
+				this.logger.warn(
+					`Failed to get service stats for ${nameOrId}: ${error}`
+				);
+			}
 			return null;
+		}
+	}
+
+	// Use the configured WordPress image for volume checks to avoid pulling new images
+	private getVolumeCheckImage(): string {
+		return process.env.WORDPRESS_IMAGE || "prnndk/wp-paas-wordpress:latest";
+	}
+
+	async getVolumeUsage(volumeName: string): Promise<number> {
+		const image = this.getVolumeCheckImage();
+		try {
+			// Create a temporary container to check volume usage
+			// We use 'du -sb /data' to get size in bytes
+			const stream = await this.docker.run(
+				image,
+				["du", "-sb", "/data"],
+				process.stdout,
+				{
+					HostConfig: {
+						AutoRemove: true,
+						Mounts: [
+							{
+								Type: "volume",
+								Source: volumeName,
+								Target: "/data",
+								ReadOnly: true,
+							},
+						],
+					},
+				}
+			);
+
+			const output = stream.output as any;
+			if (output && output.statusCode === 0) {
+				return this.getVolumeUsageExec(volumeName, image);
+			}
+			return 0;
+		} catch (error: any) {
+			// 404 errors are expected if image doesn't exist locally - use debug level
+			const is404 =
+				error?.statusCode === 404 ||
+				error?.message?.includes("404") ||
+				error?.message?.includes("no such");
+			if (is404) {
+				this.logger.debug(
+					`Volume usage unavailable for ${volumeName} (image not available)`
+				);
+			} else {
+				this.logger.warn(
+					`Failed to get volume usage for ${volumeName}: ${error}`
+				);
+			}
+			return 0;
+		}
+	}
+
+	private async getVolumeUsageExec(
+		volumeName: string,
+		image: string
+	): Promise<number> {
+		let container;
+		try {
+			container = await this.docker.createContainer({
+				Image: image,
+				Cmd: ["du", "-sb", "/data"],
+				HostConfig: {
+					AutoRemove: true,
+					Mounts: [
+						{
+							Type: "volume",
+							Source: volumeName,
+							Target: "/data",
+							ReadOnly: true,
+						},
+					],
+				},
+			});
+
+			await container.start();
+			const stream = await container.logs({
+				stdout: true,
+				stderr: true,
+				follow: true,
+			});
+
+			const output = stream.toString();
+			const sizeStr = output.split(/\s+/)[0] ?? "0";
+			const size = parseInt(sizeStr, 10);
+			return isNaN(size) ? 0 : size;
+		} catch (error) {
+			this.logger.warn(`Failed to measure volume ${volumeName} size: ${error}`);
+			return 0;
 		}
 	}
 }

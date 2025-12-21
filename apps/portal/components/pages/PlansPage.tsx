@@ -8,7 +8,7 @@ import {
 	AlertTriangle,
 } from "lucide-react";
 import { dashboardService } from "../../src/lib/dashboard";
-import { useDashboard } from "../DashboardLayout";
+import { useDashboard } from "../../context/DashboardContext";
 import type { PlanInfo } from "../../src/types/auth";
 import { useNavigate } from "react-router-dom";
 
@@ -72,10 +72,12 @@ export const PlansPage: React.FC = () => {
 				console.log(
 					`Processing ${instancesToDelete.size} instance deletions before downgrade...`
 				);
-				const deletePromises = Array.from(instancesToDelete).map((id) => {
-					console.log(`Deleting instance: ${id}`);
-					return dashboardService.deleteTenant(id);
-				});
+				const deletePromises = Array.from(instancesToDelete).map(
+					(id: string) => {
+						console.log(`Deleting instance: ${id}`);
+						return dashboardService.deleteTenant(id);
+					}
+				);
 				await Promise.all(deletePromises);
 				console.log("Deletion complete. Proceeding with downgrade.");
 			}

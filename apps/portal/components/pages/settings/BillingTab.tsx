@@ -8,7 +8,7 @@ import {
 	AlertCircle,
 	Loader2,
 } from "lucide-react";
-import { useDashboard } from "../../DashboardLayout";
+import { useDashboard } from "../../../context/DashboardContext";
 import { useNavigate } from "react-router-dom";
 import { dashboardService, type Invoice } from "../../../src/lib/dashboard";
 import { UpgradeModal } from "../../modals/UpgradeModal";

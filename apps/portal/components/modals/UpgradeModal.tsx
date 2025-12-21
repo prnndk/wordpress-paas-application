@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, Check, Zap, Loader2, AlertCircle } from "lucide-react";
 import { dashboardService } from "../../src/lib/dashboard";
 import type { PlanInfo } from "../../src/types/auth";
-import { useDashboard } from "../DashboardLayout";
+import { useDashboard } from "../../context/DashboardContext";
 interface UpgradeModalProps {
 	isOpen: boolean;
 	onClose: () => void;

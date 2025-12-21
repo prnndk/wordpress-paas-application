@@ -11,7 +11,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { dashboardService } from "../../src/lib/dashboard";
-import { useDashboard } from "../DashboardLayout";
+import { useDashboard } from "../../context/DashboardContext";
 import { PaymentMethodModal } from "../modals/PaymentMethodModal";
 import { SimpleDeleteModal } from "../modals/SimpleDeleteModal";
 

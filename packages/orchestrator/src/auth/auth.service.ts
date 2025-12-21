@@ -135,12 +135,11 @@ export class AuthService {
 		// Fetch tenants if requested
 		if (includes.has("tenants")) {
 			try {
-				let tenantDetails;
-				if (user.role === "admin") {
-					tenantDetails = await this.tenantsService.getAllTenants();
-				} else {
-					tenantDetails = await this.tenantsService.getTenantsByUser(userId);
-				}
+				// Always fetch only user's own tenants
+				// Admin can use /admin/tenants endpoint for all tenants
+				const tenantDetails = await this.tenantsService.getTenantsByUser(
+					userId
+				);
 
 				// Convert to TenantSummaryDto (limit to 10)
 				response.tenants = tenantDetails.slice(0, 10).map((t) => ({

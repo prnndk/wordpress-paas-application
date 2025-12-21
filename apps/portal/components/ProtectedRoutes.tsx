@@ -1,7 +1,7 @@
 import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { useDashboard } from "./DashboardLayout";
+import { useDashboard } from "@/context/DashboardContext";
 import { Lock, ArrowRight } from "lucide-react";
 
 /**

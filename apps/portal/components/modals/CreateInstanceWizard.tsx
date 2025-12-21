@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useDashboard } from "../DashboardLayout";
+import { useDashboard } from "../../context/DashboardContext";
 import {
 	dashboardService,
 	type CreateTenantPayload,
@@ -250,7 +250,7 @@ export const CreateInstanceWizard: React.FC<CreateInstanceWizardProps> = ({
 						{!canCreateInstance && (
 							<div className='mt-3 pt-3 border-t border-slate-100'>
 								<Link
-									to='/pricing'
+									to='/plans'
 									className='flex items-center justify-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors'>
 									<TrendingUp className='w-3 h-3' /> Upgrade Plan
 								</Link>
@@ -319,7 +319,7 @@ export const CreateInstanceWizard: React.FC<CreateInstanceWizardProps> = ({
 											more instances.
 										</p>
 										<Link
-											to='/pricing'
+											to='/plans'
 											className='mt-2 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800'>
 											<Zap className='w-3 h-3' /> View Upgrade Options
 										</Link>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { useDashboard } from "../DashboardLayout";
+import { useDashboard } from "../../context/DashboardContext";
+import { useAuth } from "../../context/AuthContext";
 import {
 	Search,
 	Filter,
@@ -21,6 +22,8 @@ import {
 	Layers,
 	Play,
 	StopCircle,
+	Users,
+	Shield,
 } from "lucide-react";
 
 import { LogViewerModal } from "../modals/LogViewerModal";
@@ -28,18 +31,29 @@ import { LogViewerModal } from "../modals/LogViewerModal";
 import { BackupManagerModal } from "../modals/BackupManagerModal";
 import { DeleteConfirmationModal } from "../modals/DeleteConfirmationModal";
 import { dashboardService } from "../../src/lib/dashboard";
+import { adminService, type AdminTenant } from "../../src/lib/admin";
+import type { Instance } from "../../context/DashboardContext";
 
 export const InstanceList: React.FC = () => {
 	const navigate = useNavigate();
+	const { user } = useAuth();
 	const {
-		instances,
+		instances: myInstances,
 		updateInstanceStatus,
 		deleteInstance,
 		addInstance,
 		refreshInstances,
+		setCreateModalOpen,
 	} = useDashboard();
 
+	// Check if user is admin
+	const isAdmin = user?.roles?.includes("admin");
+
 	// -- UI State --
+	const [viewMode, setViewMode] = useState<"my" | "all">("my");
+	const [adminTenants, setAdminTenants] = useState<AdminTenant[]>([]);
+	const [loadingAdminTenants, setLoadingAdminTenants] = useState(false);
+
 	const [filter, setFilter] = useState<"all" | "running" | "stopped">("all");
 	const [search, setSearch] = useState("");
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -48,136 +62,276 @@ export const InstanceList: React.FC = () => {
 		top: number;
 		left: number;
 	} | null>(null);
-	const [toast, setToast] = useState<string | null>(null);
 
-	// -- Modal State --
-	const [modalType, setModalType] = useState<
-		"none" | "logs" | "backup" | "delete"
-	>("none");
-	const [selectedInstance, setSelectedInstance] = useState<any>(null);
+	// Modals State
+	const [logViewer, setLogViewer] = useState<{
+		isOpen: boolean;
+		instanceId: string;
+		instanceName: string;
+	}>({ isOpen: false, instanceId: "", instanceName: "" });
+
+	const [backupManager, setBackupManager] = useState<{
+		isOpen: boolean;
+		instanceId: string;
+		instanceName: string;
+	}>({ isOpen: false, instanceId: "", instanceName: "" });
+
+	const [deleteConfirm, setDeleteConfirm] = useState<{
+		isOpen: boolean;
+		instanceId: string;
+		instanceName: string;
+	}>({ isOpen: false, instanceId: "", instanceName: "" });
+
+	// Action confirmation state (for start/stop/restart)
+	const [actionConfirm, setActionConfirm] = useState<{
+		isOpen: boolean;
+		action: "start" | "stop" | "restart" | null;
+		instanceId: string;
+		instanceName: string;
+	}>({ isOpen: false, action: null, instanceId: "", instanceName: "" });
+
 	const [bulkActionLoading, setBulkActionLoading] = useState(false);
+	const [toast, setToast] = useState<{ message: string; visible: boolean }>({
+		message: "",
+		visible: false,
+	});
 
-	// -- Helpers --
-	const closeMenu = () => setActiveMenu(null);
-
+	// Fetch Admin Tenants when view mode changes to 'all'
 	useEffect(() => {
-		// Immediate refresh on mount (Delayed to prevent spamming)
-		const timer = setTimeout(() => {
-			refreshInstances(true);
-		}, 1500);
+		if (isAdmin && viewMode === "all") {
+			fetchAdminTenants();
+		}
+	}, [isAdmin, viewMode]);
 
-		window.addEventListener("click", closeMenu);
-		window.addEventListener("scroll", closeMenu, { capture: true });
-		return () => {
-			window.removeEventListener("click", closeMenu);
-			window.removeEventListener("scroll", closeMenu, { capture: true });
-		};
-	}, [refreshInstances]); // Added refreshInstances dependency
+	// Handle view mode switch from URL query param (optional, for direct linking)
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const view = params.get("view");
+		if (isAdmin && view === "all") {
+			setViewMode("all");
+		}
+	}, [isAdmin]);
 
-	// -- Logic --
-	const filteredInstances = instances.filter((inst) => {
-		const matchesStatus = filter === "all" || inst.status === filter;
+	const fetchAdminTenants = async (silent: boolean = false) => {
+		try {
+			if (!silent) setLoadingAdminTenants(true);
+			const data = await adminService.getAllTenants();
+			setAdminTenants(data);
+		} catch (error) {
+			console.error("Failed to fetch admin tenants", error);
+			showToast("Failed to fetch all tenants");
+		} finally {
+			if (!silent) setLoadingAdminTenants(false);
+		}
+	};
+
+	// Real-time polling for instance updates
+	useEffect(() => {
+		const interval = setInterval(() => {
+			// Only refresh if page is visible
+			if (!document.hidden) {
+				if (viewMode === "all" && isAdmin) {
+					fetchAdminTenants(true);
+				} else {
+					refreshInstances(true);
+				}
+			}
+		}, 5000); // 5 seconds
+
+		return () => clearInterval(interval);
+	}, [viewMode, isAdmin, refreshInstances]);
+
+	// Determine which list to display
+	const displayInstances =
+		viewMode === "all"
+			? adminTenants.map((t) => ({
+					id: t.id,
+					name: t.name,
+					slug: t.subdomain, // mapping subdomain to slug
+					region: "us-east-1", // default or from data
+					plan: t.planId,
+					status: t.status as "running" | "stopped" | "provisioning" | "error",
+					ip: "N/A", // Not always avail in list
+					endpoints: {
+						site: `http://${t.subdomain}.${import.meta.env.VITE_BASE_DOMAIN}`,
+						admin: `http://${t.subdomain}.${
+							import.meta.env.VITE_BASE_DOMAIN
+						}/wp-admin`,
+					},
+					specs: { cpu: "N/A", ram: "N/A" }, // placeholder
+					created_at: t.createdAt,
+					// Extra admin fields
+					ownerEmail: t.user?.email,
+					replicas: t.docker?.desiredReplicas || t.replicas || 1,
+					runningReplicas: t.docker?.runningReplicas || 0,
+			  }))
+			: myInstances;
+
+	const showToast = (message: string) => {
+		setToast({ message, visible: true });
+		setTimeout(() => setToast((prev) => ({ ...prev, visible: false })), 3000);
+	};
+
+	// Close menu on click outside
+	useEffect(() => {
+		const handleClickOutside = () => setActiveMenu(null);
+		document.addEventListener("click", handleClickOutside);
+		return () => document.removeEventListener("click", handleClickOutside);
+	}, []);
+
+	const filteredInstances = displayInstances.filter((instance) => {
+		const matchesFilter = filter === "all" || instance.status === filter;
 		const matchesSearch =
-			inst.name.toLowerCase().includes(search.toLowerCase()) ||
-			inst.slug.toLowerCase().includes(search.toLowerCase());
-		return matchesStatus && matchesSearch;
+			instance.name.toLowerCase().includes(search.toLowerCase()) ||
+			instance.slug.toLowerCase().includes(search.toLowerCase()) ||
+			// @ts-ignore
+			instance.ownerEmail?.toLowerCase().includes(search.toLowerCase());
+
+		return matchesFilter && matchesSearch;
 	});
 
 	const toggleSelection = (id: string) => {
 		const newSet = new Set(selectedIds);
-		if (newSet.has(id)) newSet.delete(id);
-		else newSet.add(id);
+		if (newSet.has(id)) {
+			newSet.delete(id);
+		} else {
+			newSet.add(id);
+		}
 		setSelectedIds(newSet);
 	};
 
-	const toggleAll = () => {
-		if (selectedIds.size === filteredInstances.length)
+	const toggleSelectAll = () => {
+		if (selectedIds.size === filteredInstances.length) {
 			setSelectedIds(new Set());
-		else setSelectedIds(new Set(filteredInstances.map((i) => i.id)));
+		} else {
+			setSelectedIds(new Set(filteredInstances.map((i) => i.id)));
+		}
 	};
 
-	const showToast = (msg: string) => {
-		setToast(msg);
-		setTimeout(() => setToast(null), 3000);
-	};
-
-	// -- Action Handlers --
-	const handleMenuAction = async (action: string, instanceId: string) => {
-		closeMenu();
-		const inst = instances.find((i) => i.id === instanceId);
-		if (!inst) return;
-
-		if (action === "dashboard") {
-			navigate(`/instance/${inst.id}`);
-		} else if (action === "wp-admin") {
-			const url =
-				inst.endpoints?.admin || `http://${inst.ip}/${inst.slug}/wp-admin/`;
-			window.open(url, "_blank");
-		} else if (action === "restart") {
-			try {
-				updateInstanceStatus(inst.id, "provisioning");
-				showToast(`Restarting ${inst.name}...`);
-				await dashboardService.restartTenant(inst.id);
-				// Poll for status update
-				setTimeout(() => refreshInstances(true), 2000);
-			} catch (err: any) {
-				showToast(`Failed to restart: ${err.message}`);
-				updateInstanceStatus(inst.id, inst.status); // Revert
-			}
-		} else if (action === "stop") {
-			try {
-				updateInstanceStatus(inst.id, "stopped");
-				showToast(`Stopping ${inst.name}...`);
-				await dashboardService.stopTenant(inst.id);
-				setTimeout(() => refreshInstances(true), 1000);
-			} catch (err: any) {
-				showToast(`Failed to stop: ${err.message}`);
-				updateInstanceStatus(inst.id, "running"); // Revert
-			}
-		} else if (action === "start") {
-			try {
-				updateInstanceStatus(inst.id, "provisioning");
-				showToast(`Starting ${inst.name}...`);
-				await dashboardService.startTenant(inst.id);
-				setTimeout(() => refreshInstances(true), 2000);
-			} catch (err: any) {
-				showToast(`Failed to start: ${err.message}`);
-				updateInstanceStatus(inst.id, "stopped"); // Revert
-			}
-		} else if (action === "logs") {
-			setSelectedInstance(inst);
-			setModalType("logs");
-		} else if (action === "backups") {
-			setSelectedInstance(inst);
-			setModalType("backup");
-		} else if (action === "staging") {
-			showToast("Cloning to staging...");
-			setTimeout(() => {
-				addInstance({
-					...inst,
-					id: `inst_${Math.floor(Math.random() * 9000)}`,
-					name: `[Staging] ${inst.name}`,
-					slug: `${inst.slug}-staging`,
-					status: "running",
+	const handleAction = (
+		action: string,
+		instance: any // using any to accept both standard and admin shapes broadly
+	) => {
+		setActiveMenu(null);
+		switch (action) {
+			case "start":
+			case "stop":
+			case "restart":
+				// Show confirmation dialog instead of immediate execution
+				setActionConfirm({
+					isOpen: true,
+					action: action as "start" | "stop" | "restart",
+					instanceId: instance.id,
+					instanceName: instance.name,
 				});
-				showToast("Staging environment created.");
+				break;
+			case "logs":
+				setLogViewer({
+					isOpen: true,
+					instanceId: instance.id,
+					instanceName: instance.name,
+				});
+				break;
+			case "backup":
+				setBackupManager({
+					isOpen: true,
+					instanceId: instance.id,
+					instanceName: instance.name,
+				});
+				break;
+			case "delete":
+				setDeleteConfirm({
+					isOpen: true,
+					instanceId: instance.id,
+					instanceName: instance.name,
+				});
+				break;
+			case "visit":
+				if (instance.endpoints?.site) {
+					window.open(instance.endpoints.site, "_blank");
+				}
+				break;
+			case "wp-admin":
+				if (instance.endpoints?.admin) {
+					window.open(instance.endpoints.admin, "_blank");
+				}
+				break;
+			case "view-details":
+				navigate(`/instance/${instance.id}`);
+				break;
+		}
+	};
+
+	// Execute action after confirmation
+	const executeConfirmedAction = async () => {
+		const { action, instanceId, instanceName } = actionConfirm;
+		if (!action || !instanceId) return;
+
+		setActionConfirm((prev) => ({ ...prev, isOpen: false }));
+
+		// Get API method
+		const method =
+			action === "start"
+				? dashboardService.startTenant
+				: action === "stop"
+				? dashboardService.stopTenant
+				: dashboardService.restartTenant;
+
+		// Optimistic update
+		const newStatus =
+			action === "start" || action === "restart" ? "provisioning" : "stopped";
+
+		if (viewMode === "my") {
+			updateInstanceStatus(instanceId, newStatus);
+		} else {
+			setAdminTenants((prev) =>
+				prev.map((t) => (t.id === instanceId ? { ...t, status: newStatus } : t))
+			);
+		}
+
+		try {
+			await method(instanceId);
+			showToast(
+				`${
+					action.charAt(0).toUpperCase() + action.slice(1)
+				} command sent for ${instanceName}`
+			);
+			// Refresh after delay
+			setTimeout(() => {
+				if (viewMode === "all") fetchAdminTenants();
+				else refreshInstances();
 			}, 1500);
-		} else if (action === "delete") {
-			setSelectedInstance(inst);
-			setModalType("delete");
+		} catch (err) {
+			showToast(`Failed to ${action} instance`);
+			if (viewMode === "all") fetchAdminTenants();
+			else refreshInstances();
 		}
 	};
 
 	const handleDeleteConfirm = async () => {
-		if (selectedInstance) {
-			try {
-				await dashboardService.deleteTenant(selectedInstance.id);
-				setModalType("none");
-				showToast("Instance deleted successfully.");
-				refreshInstances(true);
-			} catch (error: any) {
-				showToast(`Failed to delete: ${error.message}`);
+		const { instanceId } = deleteConfirm;
+		if (!instanceId) return;
+
+		try {
+			await dashboardService.deleteTenant(instanceId);
+			setDeleteConfirm((prev) => ({ ...prev, isOpen: false }));
+			showToast("Instance deleted successfully");
+
+			// Optimistic update
+			if (viewMode === "my") {
+				deleteInstance(instanceId);
+			} else {
+				setAdminTenants((prev) => prev.filter((t) => t.id !== instanceId));
 			}
+
+			// Refresh list
+			setTimeout(() => {
+				if (viewMode === "all") fetchAdminTenants();
+				else refreshInstances();
+			}, 1000);
+		} catch (error) {
+			console.error("Failed to delete instance", error);
+			showToast("Failed to delete instance");
 		}
 	};
 
@@ -206,11 +360,17 @@ export const InstanceList: React.FC = () => {
 		showToast(`${actionMap[action]} ${selectedIds.size} instances...`);
 
 		try {
-			const promises = Array.from(selectedIds).map(async (id) => {
+			const promises = Array.from(selectedIds).map(async (id: string) => {
 				// Optimistic update for non-delete actions
 				if (action !== "delete") {
 					const status = action === "stop" ? "stopped" : "provisioning";
-					updateInstanceStatus(id, status);
+					if (viewMode === "my") {
+						updateInstanceStatus(id, status);
+					} else {
+						setAdminTenants((prev) =>
+							prev.map((t) => (t.id === id ? { ...t, status: status } : t))
+						);
+					}
 				}
 
 				switch (action) {
@@ -230,373 +390,445 @@ export const InstanceList: React.FC = () => {
 			});
 
 			await Promise.all(promises);
-
-			showToast(`Batch ${action} completed.`);
-			// Delay refresh to allow backend to process
-			setTimeout(() => refreshInstances(true), 2000);
-
-			if (action === "delete") {
-				setSelectedIds(new Set());
-			}
-		} catch (error: any) {
-			showToast(`Batch action failed: ${error.message}`);
-			refreshInstances(true); // Revert logic
+			showToast(`Bulk ${action} completed successfully`);
+			setSelectedIds(new Set());
+			if (viewMode === "all") fetchAdminTenants();
+			else refreshInstances();
+		} catch (error) {
+			console.error("Bulk action failed", error);
+			showToast("Some operations failed. Check console for details.");
+			if (viewMode === "all") fetchAdminTenants();
+			else refreshInstances();
 		} finally {
 			setBulkActionLoading(false);
 		}
 	};
 
+	const getStatusColor = (status: string) => {
+		switch (status) {
+			case "running":
+				return "bg-emerald-100 text-emerald-700 border-emerald-200";
+			case "stopped":
+				return "bg-slate-100 text-slate-700 border-slate-200";
+			case "provisioning":
+				return "bg-indigo-100 text-indigo-700 border-indigo-200";
+			case "error":
+				return "bg-red-100 text-red-700 border-red-200";
+			default:
+				return "bg-slate-100 text-slate-600 border-slate-200";
+		}
+	};
+
 	return (
-		<div className='space-y-6 relative min-h-[500px]'>
-			{/* --- TOAST NOTIFICATION --- */}
-			{toast && (
-				<div className='fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl z-[9999] animate-in slide-in-from-bottom-5'>
-					{toast}
-				</div>
-			)}
+		<div className='max-w-7xl mx-auto pb-12'>
+			{/* Toast */}
+			{toast.visible &&
+				createPortal(
+					<div className='fixed bottom-8 right-8 bg-slate-900 text-white px-6 py-3 rounded-lg shadow-xl z-50 animate-in slide-in-from-bottom-5 fade-in duration-300'>
+						{toast.message}
+					</div>,
+					document.body
+				)}
 
-			{/* --- MODALS --- */}
-			<LogViewerModal
-				isOpen={modalType === "logs"}
-				onClose={() => setModalType("none")}
-				instanceName={selectedInstance?.name || ""}
-			/>
-			<BackupManagerModal
-				isOpen={modalType === "backup"}
-				onClose={() => setModalType("none")}
-				instanceName={selectedInstance?.name || ""}
-			/>
+			{/* Delete Confirmation Modal */}
 			<DeleteConfirmationModal
-				isOpen={modalType === "delete"}
-				onClose={() => setModalType("none")}
+				isOpen={deleteConfirm.isOpen}
+				onClose={() => setDeleteConfirm((prev) => ({ ...prev, isOpen: false }))}
 				onConfirm={handleDeleteConfirm}
-				instanceName={selectedInstance?.name || ""}
+				instanceName={deleteConfirm.instanceName}
 			/>
 
-			{/* --- HEADER --- */}
-			<div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4'>
+			{/* Action Confirmation Modal */}
+			{actionConfirm.isOpen &&
+				createPortal(
+					<div className='fixed inset-0 flex items-center justify-center z-[9999]'>
+						<div
+							className='absolute inset-0 bg-black/50 backdrop-blur-sm'
+							onClick={() =>
+								setActionConfirm((prev) => ({ ...prev, isOpen: false }))
+							}></div>
+						<div className='relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 animate-in zoom-in-95 fade-in duration-200'>
+							<div className='text-center mb-6'>
+								<div
+									className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+										actionConfirm.action === "stop"
+											? "bg-amber-100 text-amber-600"
+											: actionConfirm.action === "restart"
+											? "bg-blue-100 text-blue-600"
+											: "bg-emerald-100 text-emerald-600"
+									}`}>
+									{actionConfirm.action === "stop" ? (
+										<Power className='w-8 h-8' />
+									) : actionConfirm.action === "restart" ? (
+										<RotateCw className='w-8 h-8' />
+									) : (
+										<Play className='w-8 h-8' />
+									)}
+								</div>
+								<h3 className='text-xl font-bold text-slate-900'>
+									{actionConfirm.action?.charAt(0).toUpperCase() +
+										(actionConfirm.action?.slice(1) || "")}{" "}
+									Instance?
+								</h3>
+								<p className='text-slate-500 mt-2'>
+									Are you sure you want to {actionConfirm.action}{" "}
+									<span className='font-semibold text-slate-700'>
+										{actionConfirm.instanceName}
+									</span>
+									?
+								</p>
+							</div>
+							<div className='flex gap-3'>
+								<button
+									onClick={() =>
+										setActionConfirm((prev) => ({ ...prev, isOpen: false }))
+									}
+									className='flex-1 px-4 py-3 text-sm font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors'>
+									Cancel
+								</button>
+								<button
+									onClick={executeConfirmedAction}
+									className={`flex-1 px-4 py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
+										actionConfirm.action === "stop"
+											? "bg-amber-600 hover:bg-amber-700"
+											: actionConfirm.action === "restart"
+											? "bg-blue-600 hover:bg-blue-700"
+											: "bg-emerald-600 hover:bg-emerald-700"
+									}`}>
+									{actionConfirm.action?.charAt(0).toUpperCase() +
+										(actionConfirm.action?.slice(1) || "")}
+								</button>
+							</div>
+						</div>
+					</div>,
+					document.body
+				)}
+
+			{/* Header */}
+			<div className='flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8'>
 				<div>
-					<h1 className='text-2xl font-bold text-slate-900'>My Instances</h1>
-					<p className='text-slate-500 text-sm'>
-						Manage your WordPress containers.
+					<h1 className='text-3xl font-extrabold text-slate-900 tracking-tight'>
+						{viewMode === "all" ? "All Tenants" : "My Instances"}
+					</h1>
+					<p className='text-slate-500 mt-1'>
+						{viewMode === "all"
+							? "Manage all platform instances"
+							: "Manage and monitor your WordPress sites"}
 					</p>
 				</div>
-			</div>
 
-			{/* --- TOOLBAR --- */}
-			<div className='bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center transition-all'>
-				{selectedIds.size > 0 ? (
-					<div className='flex items-center gap-4 w-full bg-indigo-50 p-2 rounded-lg border border-indigo-100 animate-in fade-in'>
-						<span className='text-sm font-bold text-indigo-900 ml-2'>
-							{selectedIds.size} selected
-						</span>
-						<div className='h-4 w-px bg-indigo-200'></div>
+				{/* Admin View Toggle */}
+				{isAdmin && (
+					<div className='flex bg-slate-100 p-1 rounded-lg'>
 						<button
-							onClick={() => handleBulkAction("start")}
-							disabled={bulkActionLoading}
-							className='text-xs font-bold text-green-700 hover:text-green-900 flex items-center gap-1 disabled:opacity-50'>
-							<Play className='w-3 h-3' /> Start
+							onClick={() => setViewMode("my")}
+							className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+								viewMode === "my"
+									? "bg-white text-indigo-600 shadow-sm"
+									: "text-slate-500 hover:text-slate-900"
+							}`}>
+							My Instances
 						</button>
 						<button
-							onClick={() => handleBulkAction("restart")}
-							disabled={bulkActionLoading}
-							className='text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1 disabled:opacity-50'>
-							<RotateCw className='w-3 h-3' /> Restart
-						</button>
-						<button
-							onClick={() => handleBulkAction("stop")}
-							disabled={bulkActionLoading}
-							className='text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1 disabled:opacity-50'>
-							<StopCircle className='w-3 h-3' /> Stop
-						</button>
-						<button
-							onClick={() => handleBulkAction("delete")}
-							disabled={bulkActionLoading}
-							className='text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 disabled:opacity-50'>
-							<Trash2 className='w-3 h-3' /> Delete
-						</button>
-						<button
-							onClick={() => setSelectedIds(new Set())}
-							className='ml-auto text-xs text-slate-500 hover:text-slate-700'>
-							Cancel
+							onClick={() => setViewMode("all")}
+							className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${
+								viewMode === "all"
+									? "bg-white text-indigo-600 shadow-sm"
+									: "text-slate-500 hover:text-slate-900"
+							}`}>
+							<Shield className='w-3 h-3' /> All Tenants
 						</button>
 					</div>
-				) : (
-					<>
-						<div className='flex bg-slate-100 p-1 rounded-lg w-full md:w-auto'>
-							{["all", "running", "stopped"].map((tab) => (
-								<button
-									key={tab}
-									onClick={() => setFilter(tab as any)}
-									className={`px-4 py-1.5 text-sm font-medium rounded-md capitalize transition-all flex-1 md:flex-none ${
-										filter === tab
-											? "bg-white text-indigo-600 shadow-sm"
-											: "text-slate-500 hover:text-slate-700"
-									}`}>
-									{tab}
-								</button>
-							))}
-						</div>
-
-						<div className='relative w-full md:w-64'>
-							<Search className='absolute left-3 top-2.5 h-4 w-4 text-slate-400' />
-							<input
-								type='text'
-								placeholder='Search...'
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								className='w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors'
-							/>
-						</div>
-					</>
 				)}
 			</div>
 
-			{/* --- DATA GRID --- */}
-			<div className='bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible'>
-				<table className='min-w-full divide-y divide-slate-200'>
-					<thead className='bg-slate-50'>
-						<tr>
-							<th className='px-4 py-3 w-10'>
-								<button
-									onClick={toggleAll}
-									className='text-slate-400 hover:text-slate-600'>
-									{selectedIds.size > 0 &&
-									selectedIds.size === filteredInstances.length ? (
-										<CheckSquare className='w-5 h-5 text-indigo-600' />
-									) : (
-										<Square className='w-5 h-5' />
-									)}
-								</button>
-							</th>
-							<th className='px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider'>
-								Instance
-							</th>
-							<th className='px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider'>
-								Status
-							</th>
-							<th className='px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell'>
-								Spec
-							</th>
-							<th className='px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell'>
-								Region
-							</th>
-							<th className='relative px-6 py-3'>
-								<span className='sr-only'>Actions</span>
-							</th>
-						</tr>
-					</thead>
-					<tbody className='bg-white divide-y divide-slate-200'>
-						{filteredInstances.length === 0 ? (
-							<tr>
-								<td
-									colSpan={6}
-									className='px-6 py-16 text-center text-slate-500'>
-									<div className='w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4'>
-										<Search className='w-8 h-8 text-slate-300' />
-									</div>
-									<p>No instances found matching your criteria.</p>
-								</td>
+			{/* Controls Toolbar */}
+			<div className='bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-4'>
+				{/* Left: Search & Filter */}
+				<div className='flex items-center gap-3 w-full md:w-auto'>
+					<div className='relative flex-1 md:w-64'>
+						<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400' />
+						<input
+							type='text'
+							placeholder='Search instances...'
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							className='w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all'
+						/>
+					</div>
+					<div className='flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1'>
+						{(["all", "running", "stopped"] as const).map((s) => (
+							<button
+								key={s}
+								onClick={() => setFilter(s)}
+								className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize transition-colors ${
+									filter === s
+										? "bg-white text-indigo-600 shadow-sm"
+										: "text-slate-500 hover:text-slate-700"
+								}`}>
+								{s}
+							</button>
+						))}
+					</div>
+				</div>
+
+				{/* Right: Actions */}
+				<div className='flex items-center gap-3 w-full md:w-auto justify-between md:justify-end'>
+					{selectedIds.size > 0 && (
+						<div className='flex items-center gap-2 animate-in fade-in duration-200'>
+							<span className='text-xs font-medium text-slate-500'>
+								{selectedIds.size} selected
+							</span>
+							<div className='h-4 w-px bg-slate-200 mx-2' />
+							<button
+								onClick={() => handleBulkAction("start")}
+								className='p-2 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors'
+								title='Start Selected'>
+								<Play className='w-4 h-4' />
+							</button>
+							<button
+								onClick={() => handleBulkAction("stop")}
+								className='p-2 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors'
+								title='Stop Selected'>
+								<StopCircle className='w-4 h-4' />
+							</button>
+							<button
+								onClick={() => handleBulkAction("restart")}
+								className='p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors'
+								title='Restart Selected'>
+								<RotateCw className='w-4 h-4' />
+							</button>
+							<button
+								onClick={() => handleBulkAction("delete")}
+								className='p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors'
+								title='Delete Selected'>
+								<Trash2 className='w-4 h-4' />
+							</button>
+						</div>
+					)}
+					<button
+						onClick={() =>
+							viewMode === "all" ? fetchAdminTenants() : refreshInstances(true)
+						} // Handle refresh based on mode
+						className='p-2 text-slate-400 hover:text-indigo-600 transition-colors'
+						title='Refresh List'>
+						<RotateCw className='w-4 h-4' />
+					</button>
+				</div>
+			</div>
+
+			{/* List Content */}
+			<div className='bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]'>
+				{viewMode === "all" && loadingAdminTenants ? (
+					<div className='flex flex-col items-center justify-center p-12 h-64'>
+						<Loader2 className='w-8 h-8 animate-spin text-indigo-600 mb-4' />
+						<p className='text-slate-500'>Loading all tenants...</p>
+					</div>
+				) : filteredInstances.length > 0 ? (
+					<table className='w-full text-left border-collapse'>
+						<thead>
+							<tr className='bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider'>
+								<th className='py-3 px-4 w-12 text-center'>
+									<button
+										onClick={toggleSelectAll}
+										className='text-slate-400 hover:text-indigo-600 transition-colors'>
+										{selectedIds.size === filteredInstances.length &&
+										filteredInstances.length > 0 ? (
+											<CheckSquare className='w-4 h-4 text-indigo-600' />
+										) : (
+											<Square className='w-4 h-4' />
+										)}
+									</button>
+								</th>
+								<th className='py-3 px-4'>Instance</th>
+								{viewMode === "all" && <th className='py-3 px-4'>Owner</th>}
+								{viewMode === "all" && <th className='py-3 px-4'>Replicas</th>}
+								<th className='py-3 px-4'>Status</th>
+								<th className='py-3 px-4 text-right'>Actions</th>
 							</tr>
-						) : (
-							filteredInstances.map((inst) => (
+						</thead>
+						<tbody className='divide-y divide-slate-100'>
+							{filteredInstances.map((instance) => (
 								<tr
-									key={inst.id}
-									className={`group transition-colors cursor-pointer ${
-										selectedIds.has(inst.id)
-											? "bg-indigo-50/50"
-											: "hover:bg-slate-50"
-									}`}
-									onClick={() => navigate(`/instance/${inst.id}`)}>
-									<td
-										className='px-4 py-4'
-										onClick={(e) => {
-											e.stopPropagation();
-											toggleSelection(inst.id);
-										}}>
-										<div className='text-slate-400 hover:text-indigo-600'>
-											{selectedIds.has(inst.id) ? (
-												<CheckSquare className='w-5 h-5 text-indigo-600' />
+									key={instance.id}
+									className={`group hover:bg-slate-50/80 transition-colors ${
+										selectedIds.has(instance.id) ? "bg-indigo-50/30" : ""
+									}`}>
+									<td className='py-4 px-4 text-center'>
+										<button
+											onClick={() => toggleSelection(instance.id)}
+											className='text-slate-300 hover:text-indigo-600 transition-colors'>
+											{selectedIds.has(instance.id) ? (
+												<CheckSquare className='w-4 h-4 text-indigo-600' />
 											) : (
-												<Square className='w-5 h-5' />
+												<Square className='w-4 h-4' />
 											)}
+										</button>
+									</td>
+									<td className='py-4 px-4'>
+										<div className='flex items-center gap-3'>
+											<div className='w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200 text-white font-bold text-lg'>
+												{instance.name.charAt(0).toUpperCase()}
+											</div>
+											<div
+												className='cursor-pointer'
+												onClick={() => handleAction("view-details", instance)}>
+												<h3 className='font-bold text-slate-900 group-hover:text-indigo-600 transition-colors'>
+													{instance.name}
+												</h3>
+												<div className='flex items-center gap-2 text-xs text-slate-500 mt-0.5'>
+													<span className='font-mono'>/{instance.slug}</span>
+													<span>•</span>
+													<span>{instance.plan}</span>
+												</div>
+											</div>
 										</div>
 									</td>
-
-									<td className='px-6 py-4 whitespace-nowrap'>
-										<div className='flex items-center min-w-0'>
-											<div className='flex-shrink-0 h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold border border-indigo-200'>
-												WP
-											</div>
-											<div className='ml-4 min-w-0 flex-1'>
-												<div className='text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate'>
-													{inst.name}
-												</div>
-												<div className='text-xs text-slate-500 flex items-center gap-1 font-mono mt-0.5 truncate'>
-													{inst.slug}
-												</div>
-											</div>
-										</div>
-									</td>
-
-									<td className='px-6 py-4 whitespace-nowrap'>
+									{viewMode === "all" && (
+										<td className='py-4 px-4 text-sm text-slate-600'>
+											{/* @ts-ignore */}
+											{instance.ownerEmail || "Unknown"}
+										</td>
+									)}
+									{viewMode === "all" && (
+										<td className='py-4 px-4 text-sm text-slate-600 font-mono'>
+											{/* @ts-ignore */}
+											{instance.runningReplicas ?? 0} / {instance.replicas ?? 1}
+										</td>
+									)}
+									<td className='py-4 px-4'>
 										<span
-											className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize gap-1.5 ${
-												inst.status === "running"
-													? "bg-green-100 text-green-700"
-													: inst.status === "stopped"
-													? "bg-slate-100 text-slate-600"
-													: inst.status === "provisioning"
-													? "bg-yellow-100 text-yellow-700"
-													: "bg-red-100 text-red-700"
-											}`}>
-											<span
-												className={`w-1.5 h-1.5 rounded-full ${
-													inst.status === "running"
-														? "bg-green-500 animate-pulse"
-														: inst.status === "stopped"
-														? "bg-slate-400"
-														: inst.status === "provisioning"
-														? "bg-yellow-500 animate-bounce"
-														: "bg-red-500"
-												}`}></span>
-											{inst.status}
+											className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusColor(
+												instance.status
+											)}`}>
+											{instance.status}
 										</span>
 									</td>
-
-									<td className='px-6 py-4 whitespace-nowrap text-sm text-slate-600 hidden sm:table-cell'>
-										<div className='flex flex-col'>
-											<span className='font-medium text-slate-900'>
-												{inst.plan}
-											</span>
-											<span className='text-xs text-slate-400'>
-												{inst.specs.cpu}, {inst.specs.ram}
-											</span>
-										</div>
-									</td>
-
-									<td className='px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell'>
-										<div className='flex items-center gap-2'>
-											<span className='capitalize text-xs font-medium bg-slate-100 px-1.5 py-0.5 rounded'>
-												{inst.region.split("-")[0].toUpperCase()}
-											</span>
-										</div>
-									</td>
-
-									<td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium'>
+									<td className='py-4 px-4 text-right relative'>
 										<button
 											onClick={(e) => {
 												e.stopPropagation();
 												const rect = e.currentTarget.getBoundingClientRect();
-												setActiveMenu({
-													id: inst.id,
-													top: rect.bottom + window.scrollY + 6,
-													left: rect.right + window.scrollX - 224,
-												});
+												setActiveMenu(
+													activeMenu?.id === instance.id
+														? null
+														: {
+																id: instance.id,
+																top: rect.bottom + window.scrollY + 4,
+																left: rect.right + window.scrollX - 180,
+														  }
+												);
 											}}
-											className={`text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-slate-100 transition-colors ${
-												activeMenu?.id === inst.id
-													? "bg-slate-100 text-indigo-600"
-													: ""
-											}`}>
+											className='p-2 text-slate-400 hover:bg-slate-100 peer-hover:text-slate-600 rounded-lg transition-colors'>
 											<MoreHorizontal className='w-5 h-5' />
 										</button>
+
+										{/* Context Menu */}
+										{activeMenu?.id === instance.id &&
+											createPortal(
+												<div
+													className='fixed bg-white rounded-xl shadow-xl border border-slate-100 w-48 py-1 z-50 animate-in fade-in zoom-in-95 duration-100'
+													style={{
+														top: activeMenu.top,
+														left: activeMenu.left,
+													}}>
+													<button
+														onClick={() =>
+															handleAction("view-details", instance)
+														}
+														className='w-full text-left px-4 py-2.5 text-sm md:hidden text-slate-700 hover:bg-slate-50 font-medium flex items-center gap-2'>
+														<Layers className='w-4 h-4' /> View Details
+													</button>
+													<div className='px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider'>
+														Power
+													</div>
+													{instance.status === "stopped" ? (
+														<button
+															onClick={() => handleAction("start", instance)}
+															className='w-full text-left px-4 py-2.5 text-sm text-green-600 hover:bg-green-50 font-medium flex items-center gap-2'>
+															<Play className='w-4 h-4' /> Start
+														</button>
+													) : (
+														<>
+															<button
+																onClick={() =>
+																	handleAction("restart", instance)
+																}
+																className='w-full text-left px-4 py-2.5 text-sm text-indigo-600 hover:bg-indigo-50 font-medium flex items-center gap-2'>
+																<RotateCw className='w-4 h-4' /> Restart
+															</button>
+															<button
+																onClick={() => handleAction("stop", instance)}
+																className='w-full text-left px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 font-medium flex items-center gap-2'>
+																<StopCircle className='w-4 h-4' /> Stop
+															</button>
+														</>
+													)}
+
+													<div className='h-px bg-slate-100 my-1' />
+													<div className='px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider'>
+														Tools
+													</div>
+													<button
+														onClick={() => handleAction("visit", instance)}
+														className='w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 font-medium flex items-center gap-2'>
+														<ExternalLink className='w-4 h-4' /> Visit Site
+													</button>
+													<button
+														onClick={() => handleAction("wp-admin", instance)}
+														className='w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 font-medium flex items-center gap-2'>
+														<Layout className='w-4 h-4' /> WP Admin
+													</button>
+													<button
+														onClick={() => handleAction("logs", instance)}
+														className='w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 font-medium flex items-center gap-2'>
+														<Terminal className='w-4 h-4' /> Logs
+													</button>
+													<button
+														onClick={() => handleAction("backup", instance)}
+														className='w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 font-medium flex items-center gap-2'>
+														<Database className='w-4 h-4' /> Backups
+													</button>
+
+													<div className='h-px bg-slate-100 my-1' />
+													<button
+														onClick={() => handleAction("delete", instance)}
+														className='w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 font-medium flex items-center gap-2'>
+														<Trash2 className='w-4 h-4' /> Delete
+													</button>
+												</div>,
+												document.body
+											)}
 									</td>
 								</tr>
-							))
+							))}
+						</tbody>
+					</table>
+				) : (
+					<div className='flex flex-col items-center justify-center p-12 text-center'>
+						<div className='bg-slate-100 p-4 rounded-full mb-4'>
+							<Layers className='w-8 h-8 text-slate-400' />
+						</div>
+						<h3 className='text-lg font-bold text-slate-900 mb-1'>
+							No instances found
+						</h3>
+						<p className='text-slate-500 mb-6 max-w-sm'>
+							{search || filter !== "all"
+								? "Try adjusting your search or filters to find what you're looking for."
+								: viewMode === "all"
+								? "There are no instances in the platform yet."
+								: "You haven't created any instances yet. Launch your first WordPress site now!"}
+						</p>
+						{!search && filter === "all" && viewMode === "my" && (
+							<button
+								onClick={() => setCreateModalOpen(true)}
+								className='px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors flex items-center gap-2'>
+								<Layers className='w-4 h-4' /> Create Instance
+							</button>
 						)}
-					</tbody>
-				</table>
-			</div>
-
-			{/* --- DROPDOWN MENU PORTAL --- */}
-			{activeMenu &&
-				createPortal(
-					<div
-						className='fixed z-[9999] w-56 bg-white rounded-lg shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right'
-						style={{ top: activeMenu.top, left: activeMenu.left }}
-						onClick={(e) => e.stopPropagation()}>
-						{(() => {
-							const inst = instances.find((i) => i.id === activeMenu.id);
-							if (!inst) return null;
-							const isRunning = inst.status === "running";
-
-							return (
-								<>
-									<div className='py-1 border-b border-slate-100'>
-										<span className='px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider block'>
-											Navigation
-										</span>
-										<button
-											onClick={() => handleMenuAction("dashboard", inst.id)}
-											className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
-											<Layout className='w-4 h-4 text-slate-400' /> Dashboard
-											Overview
-										</button>
-										<button
-											onClick={() => handleMenuAction("wp-admin", inst.id)}
-											className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
-											<ExternalLink className='w-4 h-4 text-slate-400' /> Open
-											WP-Admin
-										</button>
-									</div>
-
-									<div className='py-1 border-b border-slate-100'>
-										<span className='px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider block'>
-											Power
-										</span>
-										{isRunning ? (
-											<>
-												<button
-													onClick={() => handleMenuAction("restart", inst.id)}
-													className='w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2'>
-													<RotateCw className='w-4 h-4' /> Restart
-												</button>
-												<button
-													onClick={() => handleMenuAction("stop", inst.id)}
-													className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
-													<Power className='w-4 h-4 text-slate-400' /> Stop
-													Instance
-												</button>
-											</>
-										) : (
-											<button
-												onClick={() => handleMenuAction("start", inst.id)}
-												className='w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50 flex items-center gap-2'>
-												<Power className='w-4 h-4' /> Start Instance
-											</button>
-										)}
-									</div>
-
-									<div className='py-1 border-b border-slate-100'>
-										<span className='px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider block'>
-											Maintenance
-										</span>
-										<button
-											onClick={() => handleMenuAction("logs", inst.id)}
-											className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
-											<Terminal className='w-4 h-4 text-slate-400' /> View Logs
-										</button>
-										<button
-											onClick={() => handleMenuAction("backups", inst.id)}
-											className='w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2'>
-											<Database className='w-4 h-4 text-slate-400' /> Backups
-										</button>
-									</div>
-
-									<div className='py-1 bg-red-50/30'>
-										<button
-											onClick={() => handleMenuAction("delete", inst.id)}
-											className='w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2'>
-											<Trash2 className='w-4 h-4' /> Delete Instance
-										</button>
-									</div>
-								</>
-							);
-						})()}
-					</div>,
-					document.body
+					</div>
 				)}
+			</div>
 		</div>
 	);
 };

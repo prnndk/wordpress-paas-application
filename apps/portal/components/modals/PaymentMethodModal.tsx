@@ -54,10 +54,16 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
 
 			const month = parseInt(formData.expMonth);
 			const year = parseInt(formData.expYear);
+			const currentYear = new Date().getFullYear();
+			const currentMonth = new Date().getMonth() + 1;
+
 			if (month < 1 || month > 12) {
 				throw new Error("Invalid expiration month");
 			}
-			if (year < new Date().getFullYear()) {
+			if (
+				year < currentYear ||
+				(year === currentYear && month < currentMonth)
+			) {
 				throw new Error("Card is expired");
 			}
 

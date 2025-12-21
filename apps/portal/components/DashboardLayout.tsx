@@ -37,53 +37,21 @@ import {
 	PanelLeftClose,
 	PanelLeftOpen,
 	Megaphone,
-	X,
 } from "lucide-react";
 import { CreateInstanceWizard } from "./modals/CreateInstanceWizard";
 import { announcementService } from "../src/lib/announcements";
 import { Announcement } from "../src/lib/admin";
 
-// --- Types & Context ---
-export interface Instance {
-	id: string;
-	name: string;
-	slug: string; // Path segment, not subdomain
-	region: string;
-	plan: string;
-	status: "running" | "stopped" | "provisioning" | "error";
-	ip: string;
-	endpoints?: {
-		site: string;
-		admin: string;
-	};
-	specs: { cpu: string; ram: string };
-	created_at: string;
-}
+import { DashboardContext, type Instance } from "../context/DashboardContext";
 
-interface DashboardContextType {
-	instances: Instance[];
-	addInstance: (instance: Instance) => void;
-	updateInstanceStatus: (id: string, status: Instance["status"]) => void;
-	deleteInstance: (id: string) => void;
-	isCreateModalOpen: boolean;
-	setCreateModalOpen: (isOpen: boolean) => void;
-	user: any;
-	refreshInstances: (force?: boolean) => Promise<void>;
-	// Subscription-Centric additions
-	subscription: SubscriptionCurrent | null;
-	quotaUsed: number;
-	quotaAllowed: number;
-	canCreateInstance: boolean;
-	isSidebarCollapsed: boolean;
-}
-
-const DashboardContext = createContext<DashboardContextType | null>(null);
-
-export const useDashboard = () => {
-	const context = useContext(DashboardContext);
-	if (!context)
-		throw new Error("useDashboard must be used within DashboardLayout");
-	return context;
+// Helper to get IP from endpoints
+const getIpFromEndpoints = (endpoints?: { site?: string; admin?: string }) => {
+	if (!endpoints?.site) return "10.0.0.1";
+	try {
+		return new URL(endpoints.site).hostname;
+	} catch {
+		return "10.0.0.1";
+	}
 };
 
 // Helper function to convert TenantSummary to Instance
@@ -92,9 +60,13 @@ const tenantToInstance = (tenant: TenantSummary): Instance => ({
 	name: tenant.name,
 	slug: tenant.slug || tenant.name.toLowerCase().replace(/\s+/g, "-"),
 	region: tenant.region || "us-east-1",
-	plan: tenant.planName || "Starter",
+	plan:
+		tenant.planName ||
+		(tenant.planId
+			? tenant.planId.charAt(0).toUpperCase() + tenant.planId.slice(1)
+			: "Starter"),
 	status: tenant.status,
-	ip: "10.0.0.1", // Placeholder IP
+	ip: getIpFromEndpoints(tenant.endpoints),
 	endpoints: tenant.endpoints,
 	specs: {
 		cpu: `${tenant.specs.cpuCores} vCPU`,
@@ -144,16 +116,8 @@ const NAV_GROUPS: { label?: string; items: NavItemConfig[] }[] = [
 				icon: Shield,
 				adminOnly: true,
 				children: [
-					{
-						label: "User Management",
-						icon: Users,
-						path: "/admin/users",
-					},
-					{
-						label: "Maintenance",
-						icon: Wrench,
-						path: "/admin/maintenance",
-					},
+					{ label: "Users", path: "/admin/users", icon: Users },
+					{ label: "Maintenance", path: "/admin/maintenance", icon: Wrench },
 				],
 			},
 		],
@@ -209,24 +173,45 @@ export const DashboardLayout: React.FC = () => {
 
 	// Announcement State
 	const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-	const [showAnnouncements, setShowAnnouncements] = useState(false);
 	const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
+	const [lastAnnouncementCount, setLastAnnouncementCount] = useState(0);
 
-	useEffect(() => {
-		const fetchAnnouncements = async () => {
-			try {
-				const data = await announcementService.getActiveAnnouncements();
-				setAnnouncements(data);
-				// Check for unread logic or just presence for now
-				if (data.length > 0) {
-					setHasUnreadAnnouncements(true);
-				}
-			} catch (error) {
-				console.error("Failed to fetch announcements", error);
+	// Fetch announcements function
+	const fetchAnnouncements = useCallback(async () => {
+		try {
+			const data = await announcementService.getActiveAnnouncements();
+
+			// Set announcements
+			setAnnouncements(data);
+
+			// Show unread indicator if new announcements appear and dropdown is closed
+			if (data.length > lastAnnouncementCount && !isNotifOpen) {
+				setHasUnreadAnnouncements(true);
 			}
-		};
+
+			setLastAnnouncementCount(data.length);
+		} catch (error) {
+			console.error("Failed to fetch announcements", error);
+		}
+	}, [isNotifOpen, lastAnnouncementCount]);
+
+	// Initial fetch
+	useEffect(() => {
 		fetchAnnouncements();
-	}, []);
+	}, [fetchAnnouncements]);
+
+	// Real-time polling - fetch announcements every 30 seconds
+	// Pause when tab is not visible to save resources
+	useEffect(() => {
+		const interval = setInterval(() => {
+			// Only fetch if page is visible
+			if (!document.hidden) {
+				fetchAnnouncements();
+			}
+		}, 30000); // 30 seconds
+
+		return () => clearInterval(interval);
+	}, [fetchAnnouncements]);
 
 	const toggleSidebar = () => {
 		const newState = !isSidebarCollapsed;
@@ -251,7 +236,7 @@ export const DashboardLayout: React.FC = () => {
 	// Fetch instances and subscription
 	const refreshInstances = useCallback(async (force: boolean = false) => {
 		try {
-			if (force) setLoading(true);
+			// if (force) setLoading(true); // Removed to prevent UI flashing during background updates
 			let profile = force ? null : getCachedProfile();
 			if (!profile || !profile.tenants) {
 				profile = await refreshProfile([
@@ -279,11 +264,24 @@ export const DashboardLayout: React.FC = () => {
 	}, []);
 
 	useEffect(() => {
+		// Initial load after short delay
 		const timer = setTimeout(() => {
 			refreshInstances();
 		}, 2000);
 		return () => clearTimeout(timer);
 	}, []);
+
+	// Real-time polling for instance status updates
+	useEffect(() => {
+		const interval = setInterval(() => {
+			// Only refresh if page is visible
+			if (!document.hidden) {
+				refreshInstances(true);
+			}
+		}, 15000); // 15 seconds
+
+		return () => clearInterval(interval);
+	}, [refreshInstances]);
 
 	// Actions
 	const addInstance = (instance: Instance) => {
@@ -644,34 +642,35 @@ export const DashboardLayout: React.FC = () => {
 										{currentPlan} Plan
 									</span>
 								</div>
-								{/* Announcements */}
+								{/* Notifications (with Announcements) */}
 								<div className='relative'>
 									<button
-										onClick={() => setShowAnnouncements(!showAnnouncements)}
-										className='relative p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors'>
-										<Megaphone className='w-5 h-5' />
+										onClick={(e) => {
+											e.stopPropagation();
+											setIsNotifOpen(!isNotifOpen);
+											setIsProfileOpen(false);
+											if (!isNotifOpen && hasUnreadAnnouncements) {
+												setHasUnreadAnnouncements(false);
+											}
+										}}
+										className='p-2 text-slate-400 hover:text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors relative'>
+										<Bell className='w-5 h-5' />
 										{hasUnreadAnnouncements && (
-											<span className='absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white'></span>
+											<span className='absolute top-2 right-2 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white' />
 										)}
 									</button>
-
-									{/* Announcement Popup */}
-									{showAnnouncements && (
-										<div className='absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-200'>
-											<div className='px-4 py-2 border-b border-slate-100 flex justify-between items-center'>
+									{/* Notification Dropdown */}
+									{isNotifOpen && (
+										<div className='absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2'>
+											<div className='px-4 py-2 border-b border-slate-100'>
 												<h3 className='font-bold text-slate-900'>
-													Announcements
+													Notifications & Announcements
 												</h3>
-												<button
-													onClick={() => setShowAnnouncements(false)}
-													className='text-slate-400 hover:text-slate-600'>
-													<X className='w-4 h-4' />
-												</button>
 											</div>
 											<div className='max-h-96 overflow-y-auto'>
 												{announcements.length === 0 ? (
 													<div className='p-8 text-center text-slate-500'>
-														<p className='text-sm'>No new announcements</p>
+														<p className='text-sm'>No new notifications</p>
 													</div>
 												) : (
 													<div className='divide-y divide-slate-100'>
@@ -708,27 +707,6 @@ export const DashboardLayout: React.FC = () => {
 														))}
 													</div>
 												)}
-											</div>
-										</div>
-									)}
-								</div>
-								{/* Notifications */}{" "}
-								<div className='relative'>
-									<button
-										onClick={(e) => {
-											e.stopPropagation();
-											setIsNotifOpen(!isNotifOpen);
-											setIsProfileOpen(false);
-										}}
-										className='p-2 text-slate-400 hover:text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors relative'>
-										<Bell className='w-5 h-5' />
-										<span className='absolute top-2 right-2 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white' />
-									</button>
-									{/* Notification Dropdown (Simplified for brevity) */}
-									{isNotifOpen && (
-										<div className='absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2'>
-											<div className='p-4 text-center text-sm text-slate-500'>
-												No new notifications
 											</div>
 										</div>
 									)}

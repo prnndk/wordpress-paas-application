@@ -61,10 +61,7 @@ import { InstanceList } from "./components/pages/InstanceList";
 import { CheckoutPage } from "./components/pages/CheckoutPage";
 
 // Admin Pages
-import { AdminDashboard } from "./components/pages/AdminDashboard";
 import { AdminUsersPage } from "./components/pages/AdminUsersPage";
-import { AdminTenantsPage } from "./components/pages/AdminTenantsPage";
-import { AdminTenantDetailPage } from "./components/pages/AdminTenantDetailPage";
 import { MaintenancePage } from "./components/pages/MaintenancePage";
 
 const App: React.FC = () => {
@@ -143,10 +140,7 @@ const App: React.FC = () => {
 
 							{/* --- Admin Routes (Require Admin Role) --- */}
 							<Route element={<RequireAdmin />}>
-								<Route path='/admin' element={<AdminDashboard />} />
 								<Route path='/admin/users' element={<AdminUsersPage />} />
-								<Route path='/admin/tenants' element={<AdminTenantsPage />} />
-								<Route path='/admin/tenants/:id' element={<AdminTenantDetailPage />} />
 								<Route
 									path='/admin/maintenance'
 									element={<MaintenancePage />}
