@@ -86,9 +86,11 @@ export class WordPressService {
 			`WORDPRESS_ADMIN_USER=${wpAdminUser}`,
 			`WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
 			`WORDPRESS_ADMIN_EMAIL=${wpAdminEmail}`,
-			`WORDPRESS_TITLE=${siteTitle}`,
-			// WordPress configuration for path-based access at IP/subdomain
-			// WP_HOME and WP_SITEURL tell WordPress its full URL including the path
+			`WORDPRESS_SITE_TITLE=${siteTitle}`,
+			// WordPress URL configuration - set as env vars for wp-cli auto-install AND as defines
+			`WP_HOME=http://${this.serverIp}/${subdomain}`,
+			`WP_SITEURL=http://${this.serverIp}/${subdomain}`,
+			// WordPress configuration - force WP_HOME and WP_SITEURL in wp-config.php
 			`WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
 			// S3/MinIO configuration for WP Offload Media plugin
 			`S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
@@ -98,6 +100,21 @@ export class WordPressService {
 			`S3_UPLOADS_REGION=us-east-1`,
 			`S3_UPLOADS_USE_PATH_STYLE=true`,
 		];
+
+		// Log database connection parameters (without password)
+		this.logger.debug(
+			`Deploying WordPress with DB config: host=${database.host}:${database.port}, user=${database.user}, db=${database.name}`
+		);
+
+		// Log WordPress credentials for debugging (mask password partially)
+		this.logger.log(
+			`WordPress Credentials for ${subdomain}:\n` +
+				`  - Admin User: ${wpAdminUser}\n` +
+				`  - Admin Email: ${wpAdminEmail}\n` +
+				`  - Site Title: ${siteTitle}\n` +
+				`  - URL: http://${this.serverIp}/${subdomain}\n` +
+				`  ⚠️ LOGIN WITH USERNAME "${wpAdminUser}", NOT EMAIL!`
+		);
 
 		// Add custom environment variables from user input
 		const customEnvVars =

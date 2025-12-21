@@ -83,8 +83,8 @@ export const InstanceDetails: React.FC = () => {
 			const enrichedInstance = {
 				...foundInstance,
 				endpoints: foundInstance.endpoints || {
-					site: `https://${foundInstance.slug}`,
-					admin: `https://${foundInstance.slug}/wp-admin/`,
+					site: `http://${foundInstance.slug}`,
+					admin: `http://${foundInstance.slug}/wp-admin/`,
 				},
 				db: {
 					host: `db-cluster-${

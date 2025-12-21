@@ -9,7 +9,7 @@ import { TenantDatabaseService } from "./tenant-database.service";
 import { StorageService } from "./storage.service";
 import { WordPressService } from "./wordpress.service";
 import { SubscriptionService } from "./subscription.service";
-import { Tenant } from "@prisma/client";
+import { Tenant, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 
 export interface CreateTenantInput {
@@ -93,7 +93,7 @@ export class TenantsService {
 	private buildEndpoints(slug: string): TenantEndpoints {
 		const serverIp =
 			process.env.SERVER_IP || process.env.BASE_DOMAIN || "localhost";
-		const scheme = serverIp.includes("localhost") ? "http" : "https";
+		const scheme = "http";
 		const siteUrl = `${scheme}://${serverIp}/${slug}/`;
 		const adminUrl = `${siteUrl}wp-admin/`;
 
@@ -128,32 +128,34 @@ export class TenantsService {
 		const userPlan = await this.subscriptionService.getUserPlan(input.userId);
 		const replicas = userPlan.features.replicas;
 
-		const result = await this.prisma.$transaction(async (tx) => {
-			const existingCount = await tx.tenant.count({
-				where: { userId: input.userId },
-			});
-
-			const allowedInstances = userPlan.features.maxInstances;
-
-			if (allowedInstances !== -1 && existingCount >= allowedInstances) {
-				throw new ForbiddenException({
-					error: "QuotaExceeded",
-					message: `Instance limit reached. You have ${existingCount} instances and your plan allows ${allowedInstances}.`,
-					allowed: allowedInstances,
-					used: existingCount,
-					recommendedPlanId: "plan_pro_1",
+		const result = await this.prisma.$transaction(
+			async (tx: Prisma.TransactionClient) => {
+				const existingCount = await tx.tenant.count({
+					where: { userId: input.userId },
 				});
-			}
 
-			const existingBySlug = await tx.tenant.findUnique({
-				where: { slug: input.slug },
-			});
-			if (existingBySlug) {
-				throw new BadRequestException("Slug already in use");
-			}
+				const allowedInstances = userPlan.features.maxInstances;
 
-			return { existingCount, allowedInstances };
-		});
+				if (allowedInstances !== -1 && existingCount >= allowedInstances) {
+					throw new ForbiddenException({
+						error: "QuotaExceeded",
+						message: `Instance limit reached. You have ${existingCount} instances and your plan allows ${allowedInstances}.`,
+						allowed: allowedInstances,
+						used: existingCount,
+						recommendedPlanId: "plan_pro_1",
+					});
+				}
+
+				const existingBySlug = await tx.tenant.findUnique({
+					where: { slug: input.slug },
+				});
+				if (existingBySlug) {
+					throw new BadRequestException("Slug already in use");
+				}
+
+				return { existingCount, allowedInstances };
+			}
+		);
 
 		const wpAdminUser = input.wpAdminUser || "admin";
 		const wpAdminPassword = input.wpAdminPassword || this.generatePassword(16);
@@ -277,6 +279,12 @@ export class TenantsService {
 				const stored = JSON.parse(tenant.endpoints);
 				if (stored.site && stored.admin) {
 					endpoints = stored;
+					if (endpoints.site.startsWith("https://")) {
+						endpoints.site = endpoints.site.replace("https://", "http://");
+					}
+					if (endpoints.admin.startsWith("https://")) {
+						endpoints.admin = endpoints.admin.replace("https://", "http://");
+					}
 					if (!endpoints.site.endsWith("/")) endpoints.site += "/";
 					if (!endpoints.admin.endsWith("/")) endpoints.admin += "/";
 				}
@@ -346,6 +354,12 @@ export class TenantsService {
 					const stored = JSON.parse(tenant.endpoints);
 					if (stored.site && stored.admin) {
 						endpoints = stored;
+						if (endpoints.site.startsWith("https://")) {
+							endpoints.site = endpoints.site.replace("https://", "http://");
+						}
+						if (endpoints.admin.startsWith("https://")) {
+							endpoints.admin = endpoints.admin.replace("https://", "http://");
+						}
 						if (!endpoints.site.endsWith("/")) endpoints.site += "/";
 						if (!endpoints.admin.endsWith("/")) endpoints.admin += "/";
 					}
@@ -395,12 +409,13 @@ export class TenantsService {
 	async stopTenant(tenantId: string): Promise<void> {
 		await this.tenantRepository.updateStatus(tenantId, "stopping");
 		await this.wordpressService.stopWordPress(tenantId);
-		await this.tenantRepository.updateStatus(tenantId, "stopped");
+		// Status updated to 'stopped' in WordPressService
 	}
 
 	async restartTenant(tenantId: string): Promise<void> {
 		await this.tenantRepository.updateStatus(tenantId, "restarting");
 		await this.wordpressService.restartWordPress(tenantId);
+		await this.tenantRepository.updateStatus(tenantId, "running");
 	}
 
 	async deleteTenant(tenantId: string): Promise<void> {
