@@ -19,7 +19,7 @@ import { SubscriptionsModule } from "../subscriptions/subscriptions.module";
 			useFactory: (configService: ConfigService) => ({
 				secret: configService.get<string>("JWT_SECRET", "default-secret"),
 				signOptions: {
-					expiresIn: configService.get<string>("JWT_EXPIRES_IN", "7d"),
+					expiresIn: configService.get("JWT_EXPIRES_IN", "7d") as any,
 				},
 			}),
 			inject: [ConfigService],

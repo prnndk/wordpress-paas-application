@@ -56,6 +56,8 @@ export class WordPressService {
 		// WordPress admin credentials
 		const wpAdminUser = options?.wpAdminUser || "admin";
 		const wpAdminPassword = options?.wpAdminPassword || "changeme123";
+		const wpAdminEmail = options?.wpAdminEmail || "admin@localhost.local";
+		const siteTitle = options?.siteTitle || "My WordPress Site";
 		const replicas = options?.replicas || 2;
 
 		// MinIO/S3 configuration for media uploads
@@ -73,30 +75,41 @@ export class WordPressService {
 		);
 		const minioBucket = `wp-uploads`;
 
+		// Build base environment variables
+		const baseEnv = [
+			`WORDPRESS_DB_HOST=${database.host}:${database.port}`,
+			`WORDPRESS_DB_USER=${database.user}`,
+			`WORDPRESS_DB_PASSWORD=${database.password}`,
+			`WORDPRESS_DB_NAME=${database.name}`,
+			`WORDPRESS_TABLE_PREFIX=wp_`,
+			// WordPress admin credentials for auto-setup
+			`WORDPRESS_ADMIN_USER=${wpAdminUser}`,
+			`WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
+			`WORDPRESS_ADMIN_EMAIL=${wpAdminEmail}`,
+			`WORDPRESS_TITLE=${siteTitle}`,
+			// WordPress configuration for path-based access at IP/subdomain
+			// WP_HOME and WP_SITEURL tell WordPress its full URL including the path
+			`WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
+			// S3/MinIO configuration for WP Offload Media plugin
+			`S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
+			`S3_UPLOADS_BUCKET=${minioBucket}`,
+			`S3_UPLOADS_KEY=${minioAccessKey}`,
+			`S3_UPLOADS_SECRET=${minioSecretKey}`,
+			`S3_UPLOADS_REGION=us-east-1`,
+			`S3_UPLOADS_USE_PATH_STYLE=true`,
+		];
+
+		// Add custom environment variables from user input
+		const customEnvVars =
+			options?.customEnv
+				?.filter((e) => e.key && e.key.trim() !== "")
+				.map((e) => `${e.key}=${e.value}`) || [];
+
 		const spec: ServiceSpec = {
 			name: serviceName,
 			image: this.wpImage,
 			replicas, // Use plan-based replicas
-			env: [
-				`WORDPRESS_DB_HOST=${database.host}:${database.port}`,
-				`WORDPRESS_DB_USER=${database.user}`,
-				`WORDPRESS_DB_PASSWORD=${database.password}`,
-				`WORDPRESS_DB_NAME=${database.name}`,
-				`WORDPRESS_TABLE_PREFIX=wp_`,
-				// WordPress admin credentials for auto-setup
-				`WORDPRESS_ADMIN_USER=${wpAdminUser}`,
-				`WORDPRESS_ADMIN_PASSWORD=${wpAdminPassword}`,
-				// WordPress configuration for path-based access at IP/subdomain
-				// WP_HOME and WP_SITEURL tell WordPress its full URL including the path
-				`WORDPRESS_CONFIG_EXTRA=define('WP_HOME', 'http://${this.serverIp}/${subdomain}'); define('WP_SITEURL', 'http://${this.serverIp}/${subdomain}'); define('FORCE_SSL_ADMIN', false); define('AS3CF_SETTINGS', serialize(array('provider' => 'aws', 'access-key-id' => '${minioAccessKey}', 'secret-access-key' => '${minioSecretKey}')));`,
-				// S3/MinIO configuration for WP Offload Media plugin
-				`S3_UPLOADS_ENDPOINT=${minioEndpoint}`,
-				`S3_UPLOADS_BUCKET=${minioBucket}`,
-				`S3_UPLOADS_KEY=${minioAccessKey}`,
-				`S3_UPLOADS_SECRET=${minioSecretKey}`,
-				`S3_UPLOADS_REGION=us-east-1`,
-				`S3_UPLOADS_USE_PATH_STYLE=true`,
-			],
+			env: [...baseEnv, ...customEnvVars],
 			labels: {
 				"wp-paas.tenant": tenantId,
 				"wp-paas.tenant-id": tenantId,

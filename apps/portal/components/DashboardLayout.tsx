@@ -445,7 +445,9 @@ export const DashboardLayout: React.FC = () => {
 		return (
 			<Link
 				key={item.label}
-				to={item.path || "#"}
+				to={`${item.path || "#"}${
+					item.requiredTab ? `?tab=${item.requiredTab}` : ""
+				}`}
 				className={getLinkClass(
 					item.path,
 					item.strict,
