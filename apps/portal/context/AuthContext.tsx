@@ -8,8 +8,13 @@ interface AuthContextType {
 	user: User | null;
 	isLoading: boolean;
 	login: (email: string, password: string) => Promise<boolean>;
-	register: (name: string, email: string, password: string) => Promise<boolean>;
+	register: (
+		fullName: string,
+		email: string,
+		password: string
+	) => Promise<boolean>;
 	logout: () => Promise<void>;
+	refreshUser: () => Promise<void>;
 	isAuthenticated: boolean;
 }
 
@@ -67,12 +72,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
 	// Register function
 	const register = async (
-		name: string,
+		fullName: string,
 		email: string,
 		password: string
 	): Promise<boolean> => {
 		try {
-			const registeredUser = await authService.register(name, email, password);
+			const registeredUser = await authService.register(
+				fullName,
+				email,
+				password
+			);
 			setUser(registeredUser);
 			return true;
 		} catch (error) {
@@ -97,12 +106,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	};
 
+	// Refresh user data from backend
+	const refreshUser = async () => {
+		try {
+			const profile = await authService.getFullProfile([]);
+			if (profile) {
+				setUser(profile.user);
+			}
+		} catch (error) {
+			console.error("Failed to refresh user:", error);
+		}
+	};
+
 	const value = {
 		user,
 		isLoading,
 		login,
 		register,
 		logout,
+		refreshUser,
 		isAuthenticated: !!user,
 	};
 

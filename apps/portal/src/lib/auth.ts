@@ -72,11 +72,11 @@ export async function login(email: string, password: string): Promise<User> {
  * Register a new user account
  */
 export async function register(
-	name: string,
+	fullName: string,
 	email: string,
 	password: string
 ): Promise<User> {
-	const payload: RegisterRequest = { name, email, password };
+	const payload: RegisterRequest = { fullName, email, password };
 
 	// Step 1: Register and get token
 	const authResponse = await api.post<AuthResponse>("/auth/register", payload);
@@ -298,4 +298,84 @@ export async function refreshProfile(
 	includes: IncludeOption[] = ["tenants", "subscriptions", "cluster", "audit"]
 ): Promise<MeResponse | null> {
 	return getFullProfile(includes);
+}
+
+/**
+ * Update user profile (fullName, name, avatarUrl)
+ */
+export async function updateProfile(data: {
+	fullName?: string;
+	name?: string;
+	avatarUrl?: string;
+}): Promise<{ success: boolean }> {
+	const result = await api.patch<{ success: boolean }>("/auth/profile", data);
+	// Refresh cached profile after update
+	await refreshProfile([]);
+	return result;
+}
+
+/**
+ * Update user settings (timezone, language)
+ */
+export async function updateSettings(data: {
+	timezone?: string;
+	language?: string;
+}): Promise<{ success: boolean }> {
+	const result = await api.patch<{ success: boolean }>("/auth/settings", data);
+	// Refresh cached profile after update
+	await refreshProfile([]);
+	return result;
+}
+
+/**
+ * Change user password
+ */
+export async function changePassword(
+	currentPassword: string,
+	newPassword: string
+): Promise<{ success: boolean }> {
+	return api.post<{ success: boolean }>("/auth/change-password", {
+		currentPassword,
+		newPassword,
+	});
+}
+
+/**
+ * Delete user account permanently (requires password verification)
+ */
+export async function deleteAccount(
+	password: string
+): Promise<{ success: boolean }> {
+	return api.post<{ success: boolean }>("/auth/delete-account", { password });
+}
+
+/**
+ * Upload user avatar image
+ */
+export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
+	const formData = new FormData();
+	formData.append("file", file);
+
+	const token = getAuthToken();
+	const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+	const response = await fetch(`${baseUrl}/auth/avatar`, {
+		method: "POST",
+		headers: {
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+		},
+		body: formData,
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({}));
+		throw new Error(error.message || "Failed to upload avatar");
+	}
+
+	const result = await response.json();
+
+	// Refresh cached profile after upload
+	await refreshProfile([]);
+
+	return result;
 }
