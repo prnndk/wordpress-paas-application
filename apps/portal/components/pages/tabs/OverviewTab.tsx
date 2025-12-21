@@ -161,7 +161,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ instance }) => {
 									target='_blank'
 									rel='noreferrer'
 									className='text-sm font-bold text-slate-900 hover:text-indigo-600 flex items-center gap-1 transition-colors'>
-									/{instance.slug}/ <ExternalLink className='w-3 h-3' />
+									{siteUrl} <ExternalLink className='w-3 h-3' />
 								</a>
 							</div>
 							<div

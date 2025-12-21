@@ -126,5 +126,47 @@ if (!empty($wp_paas_path_prefix)) {
         }
         return $logout_url;
     }, 10, 2);
+
+    // ===========================================================================
+    // CRITICAL: Force HTTP scheme when FORCE_SSL_ADMIN is false
+    // This prevents WordPress from redirecting to HTTPS
+    // ===========================================================================
+    if (defined('FORCE_SSL_ADMIN') && FORCE_SSL_ADMIN === false) {
+        // Force HTTP on site_url and home_url
+        add_filter('site_url', function ($url) {
+            return str_replace('https://', 'http://', $url);
+        }, 99);
+        
+        add_filter('home_url', function ($url) {
+            return str_replace('https://', 'http://', $url);
+        }, 99);
+        
+        add_filter('admin_url', function ($url) {
+            return str_replace('https://', 'http://', $url);
+        }, 99);
+        
+        // Prevent wp_redirect from changing to HTTPS
+        add_filter('wp_redirect', function ($location) {
+            // Only change HTTPS to HTTP if we're explicitly not using SSL
+            if (strpos($location, 'https://') === 0) {
+                $location = str_replace('https://', 'http://', $location);
+            }
+            return $location;
+        }, 99);
+        
+        // Force the scheme in login/logout URLs
+        add_filter('login_url', function ($url) {
+            return str_replace('https://', 'http://', $url);
+        }, 99);
+        
+        add_filter('logout_url', function ($url) {
+            return str_replace('https://', 'http://', $url);
+        }, 99, 1);
+        
+        // Disable HTTPS redirect in wp-login.php
+        add_filter('secure_signon_cookie', '__return_false');
+        add_filter('secure_auth_cookie', '__return_false');
+        add_filter('secure_logged_in_cookie', '__return_false');
+    }
 }
 

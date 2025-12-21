@@ -25,6 +25,7 @@ import {
 	Users,
 	Shield,
 	Wrench,
+	Boxes,
 } from "lucide-react";
 
 export const DashboardHome: React.FC = () => {
@@ -368,7 +369,7 @@ export const DashboardHome: React.FC = () => {
 					</div>
 
 					{/* Management Tools */}
-					<div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+					<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
 						<button
 							onClick={() => navigate("/admin/users")}
 							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
@@ -405,6 +406,25 @@ export const DashboardHome: React.FC = () => {
 								</div>
 							</div>
 							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all' />
+						</button>
+
+						<button
+							onClick={() => navigate("/admin/services")}
+							className='bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all text-left group flex items-center justify-between'>
+							<div className='flex items-center gap-4'>
+								<div className='p-3 rounded-xl bg-slate-50 text-slate-600 group-hover:bg-cyan-50 group-hover:text-cyan-600 transition-colors'>
+									<Boxes className='w-5 h-5' />
+								</div>
+								<div>
+									<h3 className='font-bold text-slate-900 group-hover:text-cyan-600 transition-colors'>
+										Containers
+									</h3>
+									<p className='text-xs text-slate-500'>
+										View all Docker services
+									</p>
+								</div>
+							</div>
+							<ArrowRight className='w-4 h-4 text-slate-300 group-hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-all' />
 						</button>
 
 						<button
