@@ -10,20 +10,42 @@ import {
 	Loader2,
 	ArrowRight,
 	Boxes,
+	Cpu,
+	HardDrive,
+	Globe,
+	Zap,
 } from "lucide-react";
 import { adminService, AdminStats } from "../../src/lib/admin";
+import { dashboardService } from "../../src/lib/dashboard";
+
+interface ClusterMetrics {
+	totalCpu: number;
+	totalMemory: number;
+	totalContainers: number;
+	nodeCount: number;
+	tenantCount: number;
+	requestsPerSecond: number;
+	avgLatency: number;
+}
 
 export const AdminDashboard: React.FC = () => {
 	const navigate = useNavigate();
 	const [stats, setStats] = useState<AdminStats | null>(null);
+	const [clusterMetrics, setClusterMetrics] = useState<ClusterMetrics | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
-		const fetchStats = async () => {
+		const fetchData = async () => {
 			try {
-				const data = await adminService.getStats();
-				setStats(data);
+				const [statsData, clusterData] = await Promise.all([
+					adminService.getStats(),
+					dashboardService.getClusterPrometheusMetrics().catch(() => null),
+				]);
+				setStats(statsData);
+				if (clusterData) {
+					setClusterMetrics(clusterData);
+				}
 			} catch (err: any) {
 				if (err.status === 403) {
 					setError("Admin access required");
@@ -35,7 +57,11 @@ export const AdminDashboard: React.FC = () => {
 			}
 		};
 
-		fetchStats();
+		fetchData();
+
+		// Auto-refresh every 30 seconds
+		const interval = setInterval(fetchData, 30000);
+		return () => clearInterval(interval);
 	}, []);
 
 	if (loading) {
@@ -160,6 +186,59 @@ export const AdminDashboard: React.FC = () => {
 					</button>
 				))}
 			</div>
+
+			{/* Prometheus Cluster Metrics */}
+			{clusterMetrics && (
+				<div>
+					<h3 className='font-bold text-lg text-slate-900 mb-4 flex items-center gap-2'>
+						<Activity className='w-5 h-5 text-indigo-600' />
+						Cluster Monitoring (Prometheus)
+					</h3>
+					<div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+						<div className='bg-white p-4 rounded-xl border border-slate-200 shadow-sm'>
+							<div className='flex items-center gap-2 mb-2'>
+								<Cpu className='w-4 h-4 text-blue-500' />
+								<span className='text-xs font-medium text-slate-500'>Total CPU</span>
+							</div>
+							<p className='text-2xl font-bold text-slate-900'>{clusterMetrics.totalCpu.toFixed(1)}%</p>
+						</div>
+						<div className='bg-white p-4 rounded-xl border border-slate-200 shadow-sm'>
+							<div className='flex items-center gap-2 mb-2'>
+								<HardDrive className='w-4 h-4 text-green-500' />
+								<span className='text-xs font-medium text-slate-500'>Memory Usage</span>
+							</div>
+							<p className='text-2xl font-bold text-slate-900'>
+								{(clusterMetrics.totalMemory / (1024 * 1024 * 1024)).toFixed(2)} GB
+							</p>
+						</div>
+						<div className='bg-white p-4 rounded-xl border border-slate-200 shadow-sm'>
+							<div className='flex items-center gap-2 mb-2'>
+								<Server className='w-4 h-4 text-purple-500' />
+								<span className='text-xs font-medium text-slate-500'>Containers</span>
+							</div>
+							<p className='text-2xl font-bold text-slate-900'>{clusterMetrics.totalContainers}</p>
+							<p className='text-xs text-slate-500'>{clusterMetrics.nodeCount} nodes</p>
+						</div>
+						<div className='bg-white p-4 rounded-xl border border-slate-200 shadow-sm'>
+							<div className='flex items-center gap-2 mb-2'>
+								<Zap className='w-4 h-4 text-amber-500' />
+								<span className='text-xs font-medium text-slate-500'>Requests/sec</span>
+							</div>
+							{clusterMetrics.requestsPerSecond > 0 ? (
+								<>
+									<p className='text-2xl font-bold text-slate-900'>{clusterMetrics.requestsPerSecond.toFixed(1)}</p>
+									<p className='text-xs text-slate-500'>Latency: {(clusterMetrics.avgLatency * 1000).toFixed(0)}ms</p>
+								</>
+							) : (
+								<>
+									<p className='text-2xl font-bold text-slate-400'>N/A</p>
+									<p className='text-xs text-amber-600'>Traefik metrics unavailable</p>
+								</>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* Quick Links */}
 			<div>
