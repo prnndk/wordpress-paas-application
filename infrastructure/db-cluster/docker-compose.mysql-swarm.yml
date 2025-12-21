@@ -1,0 +1,106 @@
+version: "3.8"
+
+# MySQL Master-Slave Replication for Docker Swarm
+# Uses Docker configs instead of bind mounts for cross-node compatibility
+
+services:
+  mysql-master:
+    image: mysql:8.0
+    hostname: mysql-master
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: wp_paas
+    volumes:
+      - mysql_master_data:/var/lib/mysql
+    configs:
+      - source: mysql_master_cnf
+        target: /etc/mysql/conf.d/master.cnf
+      - source: mysql_master_init
+        target: /docker-entrypoint-initdb.d/init-master.sql
+    ports:
+      - target: 3306
+        published: 3306
+        protocol: tcp
+        mode: host
+    networks:
+      - wp_paas_db_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mysql-slave:
+    image: mysql:8.0
+    hostname: mysql-slave
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+    volumes:
+      - mysql_slave_data:/var/lib/mysql
+    configs:
+      - source: mysql_slave_cnf
+        target: /etc/mysql/conf.d/slave.cnf
+      - source: mysql_slave_init
+        target: /docker-entrypoint-initdb.d/init-slave.sql
+    networks:
+      - wp_paas_db_network
+    deploy:
+      mode: replicated
+      replicas: 1
+      # Remove worker constraint if you want it to run anywhere
+      # Or ensure files are available on worker nodes
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+configs:
+  mysql_master_cnf:
+    file: ./master/my.cnf
+  mysql_master_init:
+    file: ./init-master.sql
+  mysql_slave_cnf:
+    file: ./slave/my.cnf
+  mysql_slave_init:
+    file: ./init-slave.sql
+
+volumes:
+  mysql_master_data:
+    driver: local
+  mysql_slave_data:
+    driver: local
+
+networks:
+  wp_paas_db_network:
+    external: true
