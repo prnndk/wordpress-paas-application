@@ -108,10 +108,15 @@ export const InstanceDetails: React.FC = () => {
 				}
 			} catch (error: any) {
 				console.error("Failed to fetch instance details", error);
-				// If 403 (forbidden), user doesn't own this instance
-				if (error?.response?.status === 403) {
-					setInstance(null);
+				// Only clear instance state on error if this is the initial load (not silent)
+				// For silent refreshes, keep the existing data to avoid UI disruption
+				if (!silent) {
+					// If 403 (forbidden), user doesn't own this instance
+					if (error?.response?.status === 403 || error?.response?.status === 404) {
+						setInstance(null);
+					}
 				}
+				// For silent refreshes, we just log the error and keep the existing instance data
 			} finally {
 				if (!silent) setLoading(false);
 			}
@@ -138,19 +143,19 @@ export const InstanceDetails: React.FC = () => {
 					admin: `http://${foundInstance.slug}/wp-admin/`,
 				},
 				db: {
-					host: `db-cluster-${
-						foundInstance.region.split("-")[1] || "01"
-					}.internal`,
+					host: `db-cluster-${foundInstance.region.split("-")[1] || "01"
+						}.internal`,
 					name: `wp_${foundInstance.slug.replace(/-/g, "_")}`,
 					user: `user_${foundInstance.id.split("_")[1] || "admin"}`,
 				},
 			};
 			setInstance(enrichedInstance);
 			setLoading(false);
-		} else {
-			// Only show "not found" if instances have been loaded
-			setInstance(null);
 		}
+		// Note: Don't clear instance if not found in context, as:
+		// 1. Admin might be viewing another user's instance
+		// 2. Context might not be fully loaded yet
+		// 3. Instance was already loaded via API successfully
 	};
 
 	// Sync with global instances context when instances change
@@ -492,9 +497,8 @@ export const InstanceDetails: React.FC = () => {
 											: rect.right + window.scrollX - 224, // Responsive alignment
 								});
 							}}
-							className={`p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-indigo-600 transition-colors ${
-								activeMenu ? "bg-slate-50 text-indigo-600" : ""
-							}`}>
+							className={`p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-indigo-600 transition-colors ${activeMenu ? "bg-slate-50 text-indigo-600" : ""
+								}`}>
 							<MoreHorizontal className='w-5 h-5' />
 						</button>
 					</div>
@@ -513,11 +517,10 @@ export const InstanceDetails: React.FC = () => {
 						<button
 							key={tab.id}
 							onClick={() => setActiveTab(tab.id as any)}
-							className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
-								activeTab === tab.id
-									? "border-indigo-600 text-indigo-600"
-									: "border-transparent text-slate-500 hover:text-slate-700"
-							}`}>
+							className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === tab.id
+								? "border-indigo-600 text-indigo-600"
+								: "border-transparent text-slate-500 hover:text-slate-700"
+								}`}>
 							{tab.id === "admin" && <Shield className='w-3 h-3' />}
 							{tab.label}
 						</button>
