@@ -35,14 +35,29 @@ export const RequireAuth: React.FC = () => {
  * Hierarchy: starter < pro < business < enterprise
  */
 interface RequireSubscriptionProps {
-	requiredPlan: "starter" | "pro" | "business" | "enterprise";
+	requiredPlan:
+		| "hobby"
+		| "starter"
+		| "starter_plus"
+		| "pro"
+		| "pro_plus"
+		| "business"
+		| "business_plus"
+		| "agency"
+		| "enterprise";
 }
 
 const PLAN_WEIGHTS = {
-	starter: 1,
-	pro: 2,
-	business: 3,
-	enterprise: 4,
+	free: 0,
+	hobby: 1,
+	starter: 2,
+	starter_plus: 3,
+	pro: 4,
+	pro_plus: 5,
+	business: 6,
+	business_plus: 7,
+	agency: 8,
+	enterprise: 9,
 };
 
 export const RequireSubscription: React.FC<RequireSubscriptionProps> = ({
