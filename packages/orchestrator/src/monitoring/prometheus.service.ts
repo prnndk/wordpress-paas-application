@@ -148,10 +148,12 @@ export class PrometheusService {
 		};
 
 		try {
-			// CPU queries - try in order
+			// CPU queries - try in order (multiple patterns for different cAdvisor/Docker setups)
 			const cpuQueries = [
 				`sum(rate(container_cpu_usage_seconds_total{name=~"${namePattern}"}[5m])) * 100`,
 				`sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name="${serviceName}"}[5m])) * 100`,
+				`sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"}[5m])) * 100`,
+				`sum(rate(container_cpu_usage_seconds_total{id=~"/system.slice/docker-.*\\\\.scope"}[5m])) * 100 / count(container_cpu_usage_seconds_total{id=~"/system.slice/docker-.*\\\\.scope"})`,
 				`avg(rate(container_cpu_usage_seconds_total{id=~"/docker/.*"}[5m])) * 100`,
 			];
 
@@ -159,6 +161,8 @@ export class PrometheusService {
 			const memoryQueries = [
 				`sum(container_memory_usage_bytes{name=~"${namePattern}"})`,
 				`sum(container_memory_usage_bytes{container_label_com_docker_swarm_service_name="${serviceName}"})`,
+				`sum(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"})`,
+				`avg(container_memory_usage_bytes{id=~"/system.slice/docker-.*\\\\.scope"})`,
 				`avg(container_memory_usage_bytes{id=~"/docker/.*"})`,
 			];
 
@@ -166,12 +170,16 @@ export class PrometheusService {
 			const memoryLimitQueries = [
 				`sum(container_spec_memory_limit_bytes{name=~"${namePattern}"})`,
 				`sum(container_spec_memory_limit_bytes{container_label_com_docker_swarm_service_name="${serviceName}"})`,
+				`sum(container_spec_memory_limit_bytes{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"})`,
+				`avg(container_spec_memory_limit_bytes{id=~"/system.slice/docker-.*\\\\.scope"})`,
 			];
 
 			// Network RX queries
 			const networkRxQueries = [
 				`sum(container_network_receive_bytes_total{name=~"${namePattern}"})`,
 				`sum(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name="${serviceName}"})`,
+				`sum(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"})`,
+				`avg(container_network_receive_bytes_total{id=~"/system.slice/docker-.*\\\\.scope"})`,
 				`avg(container_network_receive_bytes_total{id=~"/docker/.*"})`,
 			];
 
@@ -179,6 +187,8 @@ export class PrometheusService {
 			const networkTxQueries = [
 				`sum(container_network_transmit_bytes_total{name=~"${namePattern}"})`,
 				`sum(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name="${serviceName}"})`,
+				`sum(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"})`,
+				`avg(container_network_transmit_bytes_total{id=~"/system.slice/docker-.*\\\\.scope"})`,
 				`avg(container_network_transmit_bytes_total{id=~"/docker/.*"})`,
 			];
 
@@ -186,6 +196,8 @@ export class PrometheusService {
 			const networkRxRateQueries = [
 				`sum(rate(container_network_receive_bytes_total{name=~"${namePattern}"}[5m]))`,
 				`sum(rate(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name="${serviceName}"}[5m]))`,
+				`sum(rate(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"}[5m]))`,
+				`avg(rate(container_network_receive_bytes_total{id=~"/system.slice/docker-.*\\\\.scope"}[5m]))`,
 				`avg(rate(container_network_receive_bytes_total{id=~"/docker/.*"}[5m]))`,
 			];
 
@@ -193,6 +205,8 @@ export class PrometheusService {
 			const networkTxRateQueries = [
 				`sum(rate(container_network_transmit_bytes_total{name=~"${namePattern}"}[5m]))`,
 				`sum(rate(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name="${serviceName}"}[5m]))`,
+				`sum(rate(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"}[5m]))`,
+				`avg(rate(container_network_transmit_bytes_total{id=~"/system.slice/docker-.*\\\\.scope"}[5m]))`,
 				`avg(rate(container_network_transmit_bytes_total{id=~"/docker/.*"}[5m]))`,
 			];
 
@@ -200,6 +214,7 @@ export class PrometheusService {
 			const containerCountQueries = [
 				`count(container_memory_usage_bytes{name=~"${namePattern}"})`,
 				`count(container_memory_usage_bytes{container_label_com_docker_swarm_service_name="${serviceName}"})`,
+				`count(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"})`,
 			];
 
 			// Storage queries
@@ -310,6 +325,8 @@ export class PrometheusService {
 		const queries = [
 			`sum(rate(container_cpu_usage_seconds_total{name=~"${namePattern}"}[5m])) * 100`,
 			`sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name="${serviceName}"}[5m])) * 100`,
+			`sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"}[5m])) * 100`,
+			`sum(rate(container_cpu_usage_seconds_total{id=~"/system.slice/docker-.*\\\\.scope"}[5m])) * 100 / count(container_cpu_usage_seconds_total{id=~"/system.slice/docker-.*\\\\.scope"})`,
 			`sum(rate(container_cpu_usage_seconds_total{id=~"/docker/.*"}[5m])) * 100 / count(container_cpu_usage_seconds_total{id=~"/docker/.*"})`,
 		];
 
@@ -340,6 +357,8 @@ export class PrometheusService {
 		const queries = [
 			`sum(container_memory_usage_bytes{name=~"${namePattern}"})`,
 			`sum(container_memory_usage_bytes{container_label_com_docker_swarm_service_name="${serviceName}"})`,
+			`sum(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"})`,
+			`avg(container_memory_usage_bytes{id=~"/system.slice/docker-.*\\\\.scope"})`,
 			`sum(container_memory_usage_bytes{id=~"/docker/.*"}) / count(container_memory_usage_bytes{id=~"/docker/.*"})`,
 		];
 
@@ -370,12 +389,16 @@ export class PrometheusService {
 		const rxQueries = [
 			`sum(rate(container_network_receive_bytes_total{name=~"${namePattern}"}[5m]))`,
 			`sum(rate(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name="${serviceName}"}[5m]))`,
+			`sum(rate(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"}[5m]))`,
+			`avg(rate(container_network_receive_bytes_total{id=~"/system.slice/docker-.*\\\\.scope"}[5m]))`,
 			`sum(rate(container_network_receive_bytes_total{id=~"/docker/.*"}[5m])) / count(container_network_receive_bytes_total{id=~"/docker/.*"})`,
 		];
 
 		const txQueries = [
 			`sum(rate(container_network_transmit_bytes_total{name=~"${namePattern}"}[5m]))`,
 			`sum(rate(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name="${serviceName}"}[5m]))`,
+			`sum(rate(container_network_transmit_bytes_total{container_label_com_docker_swarm_service_name=~".*${tenantId}.*"}[5m]))`,
+			`avg(rate(container_network_transmit_bytes_total{id=~"/system.slice/docker-.*\\\\.scope"}[5m]))`,
 			`sum(rate(container_network_transmit_bytes_total{id=~"/docker/.*"}[5m])) / count(container_network_transmit_bytes_total{id=~"/docker/.*"})`,
 		];
 
