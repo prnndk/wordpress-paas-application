@@ -214,6 +214,23 @@ export const adminService = {
 	getServiceLogs: (serviceName: string, tail: number = 100) =>
 		api.get<{ logs: string[] }>(`/admin/services/${encodeURIComponent(serviceName)}/logs?tail=${tail}`),
 
+	/**
+	 * Update Docker service resource limits
+	 */
+	updateServiceResources: (
+		serviceName: string,
+		resources: {
+			cpuLimit?: number; // CPU cores (e.g., 0.5 = half a core)
+			memoryLimit?: number; // Memory in MB
+			cpuReservation?: number; // CPU cores
+			memoryReservation?: number; // Memory in MB
+		}
+	) =>
+		api.patch<{ success: boolean; message: string }>(
+			`/admin/services/${encodeURIComponent(serviceName)}/resources`,
+			resources
+		),
+
 	// -------- User Management --------
 	/**
 	 * Get all users

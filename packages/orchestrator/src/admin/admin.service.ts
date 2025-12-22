@@ -287,4 +287,50 @@ export class AdminService {
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 	}
+
+	/**
+	 * Update Docker service resource limits (CPU and Memory)
+	 * @param serviceName The name of the Docker service
+	 * @param resources Object containing cpuLimit (cores), memoryLimit (MB), cpuReservation (cores), memoryReservation (MB)
+	 */
+	async updateServiceResources(
+		serviceName: string,
+		resources: {
+			cpuLimit?: number; // CPU cores (e.g., 0.5 = half a core)
+			memoryLimit?: number; // Memory in MB
+			cpuReservation?: number; // CPU cores
+			memoryReservation?: number; // Memory in MB
+		}
+	): Promise<void> {
+		this.logger.log(
+			`Updating resources for service ${serviceName}: CPU=${resources.cpuLimit || 'unchanged'} cores, Memory=${resources.memoryLimit || 'unchanged'} MB`
+		);
+
+		// Convert user-friendly values to Docker format
+		const dockerResources: {
+			cpuLimit?: number;
+			memoryLimit?: number;
+			cpuReservation?: number;
+			memoryReservation?: number;
+		} = {};
+
+		// Convert CPU cores to nanoCPUs (1 CPU = 1e9 nanoCPUs)
+		if (resources.cpuLimit !== undefined) {
+			dockerResources.cpuLimit = Math.round(resources.cpuLimit * 1e9);
+		}
+		if (resources.cpuReservation !== undefined) {
+			dockerResources.cpuReservation = Math.round(resources.cpuReservation * 1e9);
+		}
+
+		// Convert MB to bytes
+		if (resources.memoryLimit !== undefined) {
+			dockerResources.memoryLimit = resources.memoryLimit * 1024 * 1024;
+		}
+		if (resources.memoryReservation !== undefined) {
+			dockerResources.memoryReservation = resources.memoryReservation * 1024 * 1024;
+		}
+
+		await this.dockerService.updateServiceResources(serviceName, dockerResources);
+		this.logger.log(`Successfully updated resources for service ${serviceName}`);
+	}
 }
