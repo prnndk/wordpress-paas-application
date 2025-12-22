@@ -10,7 +10,7 @@ import {
     HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { IsBoolean, IsString, IsIn } from 'class-validator';
+import { IsBoolean, IsString, IsIn, IsOptional, IsNumber, Min } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
@@ -24,6 +24,28 @@ class SetRoleDto {
     @IsString()
     @IsIn(['user', 'admin'])
     role!: 'user' | 'admin';
+}
+
+class UpdateResourcesDto {
+    @IsOptional()
+    @IsNumber()
+    @Min(0.1)
+    cpuLimit?: number; // CPU cores (e.g., 0.5 = half a core)
+
+    @IsOptional()
+    @IsNumber()
+    @Min(64)
+    memoryLimit?: number; // Memory in MB
+
+    @IsOptional()
+    @IsNumber()
+    @Min(0.1)
+    cpuReservation?: number; // CPU cores
+
+    @IsOptional()
+    @IsNumber()
+    @Min(64)
+    memoryReservation?: number; // Memory in MB
 }
 
 @ApiTags('Admin')
@@ -106,5 +128,16 @@ export class AdminController {
     ) {
         const logs = await this.adminService.getServiceLogs(name, tail ? parseInt(tail, 10) : 100);
         return { logs };
+    }
+
+    @Patch('services/:name/resources')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Update Docker service resource limits' })
+    async updateServiceResources(
+        @Param('name') name: string,
+        @Body() dto: UpdateResourcesDto,
+    ) {
+        await this.adminService.updateServiceResources(name, dto);
+        return { success: true, message: 'Service resources updated successfully' };
     }
 }

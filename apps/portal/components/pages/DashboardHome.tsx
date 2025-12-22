@@ -463,28 +463,26 @@ export const DashboardHome: React.FC = () => {
 									<div
 										key={announcement.id}
 										onClick={() => setShowAnnouncementDetail(announcement)}
-										className={`relative rounded-xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${
-											announcement.type === "warning"
+										className={`relative rounded-xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${announcement.type === "warning"
 												? "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300"
 												: announcement.type === "maintenance"
-												? isToday
-													? "bg-gradient-to-r from-red-100 to-rose-100 border-red-300 hover:border-red-400"
-													: "bg-gradient-to-r from-red-50 to-rose-50 border-red-200 hover:border-red-300"
-												: "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300"
-										}`}>
+													? isToday
+														? "bg-gradient-to-r from-red-100 to-rose-100 border-red-300 hover:border-red-400"
+														: "bg-gradient-to-r from-red-50 to-rose-50 border-red-200 hover:border-red-300"
+													: "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300"
+											}`}>
 										<div className='flex items-stretch'>
 											{/* Main Content */}
 											<div className='flex-1 p-4 flex items-start gap-4'>
 												<div
-													className={`p-2.5 rounded-xl ${
-														announcement.type === "warning"
+													className={`p-2.5 rounded-xl ${announcement.type === "warning"
 															? "bg-amber-100 text-amber-600"
 															: announcement.type === "maintenance"
-															? isToday
-																? "bg-red-200 text-red-700 animate-pulse"
-																: "bg-red-100 text-red-600"
-															: "bg-blue-100 text-blue-600"
-													}`}>
+																? isToday
+																	? "bg-red-200 text-red-700 animate-pulse"
+																	: "bg-red-100 text-red-600"
+																: "bg-blue-100 text-blue-600"
+														}`}>
 													{announcement.type === "maintenance" ? (
 														isToday ? (
 															<AlertTriangle className='w-5 h-5' />
@@ -500,37 +498,34 @@ export const DashboardHome: React.FC = () => {
 												<div className='flex-1'>
 													<div className='flex items-center gap-2 mb-1 flex-wrap'>
 														<h3
-															className={`font-bold ${
-																announcement.type === "warning"
+															className={`font-bold ${announcement.type === "warning"
 																	? "text-amber-900"
 																	: announcement.type === "maintenance"
-																	? "text-red-900"
-																	: "text-blue-900"
-															}`}>
+																		? "text-red-900"
+																		: "text-blue-900"
+																}`}>
 															{isToday && "⚠️ "}
 															{announcement.title}
 														</h3>
 														<span
-															className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${
-																announcement.type === "warning"
+															className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${announcement.type === "warning"
 																	? "bg-amber-200 text-amber-800"
 																	: announcement.type === "maintenance"
-																	? isToday
-																		? "bg-red-300 text-red-900 animate-pulse"
-																		: "bg-red-200 text-red-800"
-																	: "bg-blue-200 text-blue-800"
-															}`}>
+																		? isToday
+																			? "bg-red-300 text-red-900 animate-pulse"
+																			: "bg-red-200 text-red-800"
+																		: "bg-blue-200 text-blue-800"
+																}`}>
 															{isToday ? "TODAY" : announcement.type}
 														</span>
 													</div>
 													<p
-														className={`text-sm ${
-															announcement.type === "warning"
+														className={`text-sm ${announcement.type === "warning"
 																? "text-amber-700"
 																: announcement.type === "maintenance"
-																? "text-red-700"
-																: "text-blue-700"
-														}`}>
+																	? "text-red-700"
+																	: "text-blue-700"
+															}`}>
 														{announcement.message}
 													</p>
 													{announcement.scheduledAt && !theCountdown && (
@@ -543,13 +538,12 @@ export const DashboardHome: React.FC = () => {
 														</p>
 													)}
 													<p
-														className={`text-xs mt-1 ${
-															announcement.type === "warning"
+														className={`text-xs mt-1 ${announcement.type === "warning"
 																? "text-amber-600"
 																: announcement.type === "maintenance"
-																? "text-red-600"
-																: "text-blue-600"
-														}`}>
+																	? "text-red-600"
+																	: "text-blue-600"
+															}`}>
 														Click to view details →
 													</p>
 												</div>
@@ -558,21 +552,19 @@ export const DashboardHome: React.FC = () => {
 											{/* Countdown Timer for maintenance type */}
 											{theCountdown && (
 												<div
-													className={`flex items-center justify-center px-4 border-l ${
-														isToday
+													className={`flex items-center justify-center px-4 border-l ${isToday
 															? "bg-red-200/50 border-red-300"
 															: "bg-red-100/50 border-red-200"
-													}`}>
+														}`}>
 													<div className='text-center'>
 														<p className='text-[10px] text-red-600 uppercase font-medium mb-0.5'>
 															Starts in
 														</p>
 														<p
-															className={`font-mono font-bold tabular-nums ${
-																isToday
+															className={`font-mono font-bold tabular-nums ${isToday
 																	? "text-xl text-red-800"
 																	: "text-lg text-red-700"
-															}`}>
+																}`}>
 															{theCountdown}
 														</p>
 													</div>
@@ -598,22 +590,20 @@ export const DashboardHome: React.FC = () => {
 						{/* Upcoming Scheduled Maintenance */}
 						{upcomingMaintenance.length > 0 && (
 							<div
-								className={`rounded-xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer transition-all ${
-									isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
+								className={`rounded-xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer transition-all ${isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
 										? "bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
 										: "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
-								}`}
+									}`}
 								onClick={() =>
 									setShowMaintenanceDetail(upcomingMaintenance[0])
 								}>
 								<div className='relative z-10 flex items-center justify-between'>
 									<div className='flex items-center gap-4'>
 										<div
-											className={`p-3 bg-white/20 rounded-xl backdrop-blur-sm ${
-												isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
+											className={`p-3 bg-white/20 rounded-xl backdrop-blur-sm ${isMaintenanceToday(upcomingMaintenance[0]?.scheduledAt)
 													? "animate-pulse"
 													: ""
-											}`}>
+												}`}>
 											{isMaintenanceToday(
 												upcomingMaintenance[0]?.scheduledAt
 											) ? (
@@ -632,13 +622,12 @@ export const DashboardHome: React.FC = () => {
 														: "Scheduled Maintenance"}
 												</h3>
 												<span
-													className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
-														isMaintenanceToday(
-															upcomingMaintenance[0]?.scheduledAt
-														)
+													className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${isMaintenanceToday(
+														upcomingMaintenance[0]?.scheduledAt
+													)
 															? "bg-white/30 animate-pulse"
 															: "bg-white/20"
-													}`}>
+														}`}>
 													{isMaintenanceToday(
 														upcomingMaintenance[0]?.scheduledAt
 													)
@@ -661,13 +650,12 @@ export const DashboardHome: React.FC = () => {
 										<p className='text-xs text-orange-200 mb-1'>Starts in</p>
 										<div className='bg-white/20 rounded-lg px-4 py-2 backdrop-blur-sm'>
 											<p
-												className={`font-mono font-bold tabular-nums ${
-													isMaintenanceToday(
-														upcomingMaintenance[0]?.scheduledAt
-													)
+												className={`font-mono font-bold tabular-nums ${isMaintenanceToday(
+													upcomingMaintenance[0]?.scheduledAt
+												)
 														? "text-3xl"
 														: "text-2xl"
-												}`}>
+													}`}>
 												{countdown || "Loading..."}
 											</p>
 										</div>
@@ -805,21 +793,20 @@ export const DashboardHome: React.FC = () => {
 						className='bg-white rounded-2xl shadow-2xl w-full max-w-lg'
 						onClick={(e) => e.stopPropagation()}>
 						<div
-							className={`px-6 py-4 border-b flex items-center justify-between rounded-t-2xl text-white ${
-								showAnnouncementDetail.type === "warning"
+							className={`px-6 py-4 border-b flex items-center justify-between rounded-t-2xl text-white ${showAnnouncementDetail.type === "warning"
 									? "bg-gradient-to-r from-amber-500 to-orange-500"
 									: showAnnouncementDetail.type === "maintenance"
-									? showAnnouncementDetail.scheduledAt &&
-									  isMaintenanceToday(showAnnouncementDetail.scheduledAt)
-										? "bg-gradient-to-r from-red-600 to-rose-600"
-										: "bg-gradient-to-r from-orange-500 to-red-500"
-									: "bg-gradient-to-r from-blue-500 to-indigo-500"
-							}`}>
+										? showAnnouncementDetail.scheduledAt &&
+											isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+											? "bg-gradient-to-r from-red-600 to-rose-600"
+											: "bg-gradient-to-r from-orange-500 to-red-500"
+										: "bg-gradient-to-r from-blue-500 to-indigo-500"
+								}`}>
 							<div className='flex items-center gap-3'>
 								<div className='p-2 bg-white/20 rounded-lg'>
 									{showAnnouncementDetail.type === "maintenance" ? (
 										showAnnouncementDetail.scheduledAt &&
-										isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? (
+											isMaintenanceToday(showAnnouncementDetail.scheduledAt) ? (
 											<AlertTriangle className='w-5 h-5' />
 										) : (
 											<Wrench className='w-5 h-5' />
@@ -861,27 +848,24 @@ export const DashboardHome: React.FC = () => {
 								showAnnouncementDetail.scheduledAt &&
 								announcementCountdowns[showAnnouncementDetail.id] && (
 									<div
-										className={`rounded-xl p-4 text-center ${
-											isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+										className={`rounded-xl p-4 text-center ${isMaintenanceToday(showAnnouncementDetail.scheduledAt)
 												? "bg-gradient-to-r from-red-100 to-rose-100"
 												: "bg-gradient-to-r from-slate-100 to-slate-50"
-										}`}>
+											}`}>
 										<p
-											className={`text-xs mb-1 ${
-												isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+											className={`text-xs mb-1 ${isMaintenanceToday(showAnnouncementDetail.scheduledAt)
 													? "text-red-600"
 													: "text-slate-500"
-											}`}>
+												}`}>
 											{isMaintenanceToday(showAnnouncementDetail.scheduledAt)
 												? "⚠️ Starting Today in"
 												: "Starts in"}
 										</p>
 										<p
-											className={`text-3xl font-mono font-bold tabular-nums ${
-												isMaintenanceToday(showAnnouncementDetail.scheduledAt)
+											className={`text-3xl font-mono font-bold tabular-nums ${isMaintenanceToday(showAnnouncementDetail.scheduledAt)
 													? "text-red-700"
 													: "text-slate-900"
-											}`}>
+												}`}>
 											{announcementCountdowns[showAnnouncementDetail.id]}
 										</p>
 									</div>
@@ -905,26 +889,25 @@ export const DashboardHome: React.FC = () => {
 								<p className='text-sm text-slate-600'>
 									{showAnnouncementDetail.scheduledAt
 										? new Date(
-												showAnnouncementDetail.scheduledAt
-										  ).toLocaleString()
+											showAnnouncementDetail.scheduledAt
+										).toLocaleString()
 										: "Active now"}
 								</p>
 							</div>
 
 							{/* Info Note based on type */}
 							<div
-								className={`rounded-lg p-3 text-sm ${
-									showAnnouncementDetail.type === "warning"
+								className={`rounded-lg p-3 text-sm ${showAnnouncementDetail.type === "warning"
 										? "bg-amber-50 border border-amber-200 text-amber-800"
 										: showAnnouncementDetail.type === "maintenance"
-										? "bg-red-50 border border-red-200 text-red-800"
-										: "bg-blue-50 border border-blue-200 text-blue-800"
-								}`}>
+											? "bg-red-50 border border-red-200 text-red-800"
+											: "bg-blue-50 border border-blue-200 text-blue-800"
+									}`}>
 								{showAnnouncementDetail.type === "maintenance"
 									? "🔧 This is a maintenance announcement. Services may be temporarily affected."
 									: showAnnouncementDetail.type === "warning"
-									? "⚠️ This is a warning notice. Please review the details carefully."
-									: "ℹ️ This is an informational announcement from the system administrators."}
+										? "⚠️ This is a warning notice. Please review the details carefully."
+										: "ℹ️ This is an informational announcement from the system administrators."}
 							</div>
 						</div>
 						<div className='px-6 py-4 border-t border-slate-200 flex justify-end'>
@@ -975,17 +958,15 @@ export const DashboardHome: React.FC = () => {
 							<Server className='w-6 h-6' />
 						</div>
 						<div
-							className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-								activeCount > 0
+							className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${activeCount > 0
 									? "bg-green-100 text-green-700"
 									: "bg-slate-100 text-slate-600"
-							}`}>
+								}`}>
 							<div
-								className={`w-1.5 h-1.5 rounded-full ${
-									activeCount > 0
+								className={`w-1.5 h-1.5 rounded-full ${activeCount > 0
 										? "bg-green-500 animate-pulse"
 										: "bg-slate-400"
-								}`}></div>
+									}`}></div>
 							{activeCount > 0 ? "System Online" : "No Active Services"}
 						</div>
 					</div>
@@ -1259,8 +1240,8 @@ export const DashboardHome: React.FC = () => {
 							<p className='text-2xl font-bold text-white'>
 								{liveMetrics
 									? `${(liveMetrics.totalMemory / (1024 * 1024 * 1024)).toFixed(
-											2
-									  )} GB`
+										2
+									)} GB`
 									: "--"}
 							</p>
 						</div>
@@ -1342,15 +1323,14 @@ export const DashboardHome: React.FC = () => {
 										onClick={() => navigate(`/instance/${inst.id}`)}>
 										<div className='flex items-center gap-4'>
 											<div
-												className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${
-													inst.status === "running"
+												className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${inst.status === "running"
 														? "bg-green-100 text-green-700"
 														: inst.status === "provisioning"
-														? "bg-amber-100 text-amber-700"
-														: inst.status === "error"
-														? "bg-red-100 text-red-700"
-														: "bg-slate-100 text-slate-500"
-												}`}>
+															? "bg-amber-100 text-amber-700"
+															: inst.status === "error"
+																? "bg-red-100 text-red-700"
+																: "bg-slate-100 text-slate-500"
+													}`}>
 												WP
 											</div>
 											<div>
@@ -1380,13 +1360,12 @@ export const DashboardHome: React.FC = () => {
 												</div>
 											</div>
 											<div
-												className={`px-3 py-1 rounded-full text-xs font-bold capitalize border ${
-													inst.status === "running"
+												className={`px-3 py-1 rounded-full text-xs font-bold capitalize border ${inst.status === "running"
 														? "bg-green-50 text-green-700 border-green-200"
 														: inst.status === "provisioning"
-														? "bg-amber-50 text-amber-700 border-amber-200"
-														: "bg-slate-50 text-slate-600 border-slate-200"
-												}`}>
+															? "bg-amber-50 text-amber-700 border-amber-200"
+															: "bg-slate-50 text-slate-600 border-slate-200"
+													}`}>
 												{inst.status}
 											</div>
 											<ChevronRight className='w-5 h-5 text-slate-300 group-hover:text-indigo-400 transition-colors' />
@@ -1510,13 +1489,12 @@ export const DashboardHome: React.FC = () => {
 									return (
 										<div key={log.id} className='relative pl-10 py-3 group'>
 											<div
-												className={`absolute left-0 top-3.5 w-[10px] h-[10px] rounded-full border-2 border-white ring-1 z-10 ${
-													log.level === "error"
+												className={`absolute left-0 top-3.5 w-[10px] h-[10px] rounded-full border-2 border-white ring-1 z-10 ${log.level === "error"
 														? "bg-red-500 ring-red-100"
 														: log.level === "warn"
-														? "bg-amber-500 ring-amber-100"
-														: "bg-indigo-500 ring-indigo-100"
-												}`}></div>
+															? "bg-amber-500 ring-amber-100"
+															: "bg-indigo-500 ring-indigo-100"
+													}`}></div>
 											<div className='bg-white p-3 rounded-lg border border-slate-100 shadow-sm group-hover:border-indigo-100 group-hover:shadow-md transition-all'>
 												<p className='text-sm text-slate-900 font-semibold leading-tight'>
 													{formatted.action}
@@ -1533,6 +1511,149 @@ export const DashboardHome: React.FC = () => {
 										</div>
 									);
 								})}
+							</div>
+						)}
+					</div>
+
+					{/* Announcements Section */}
+					<div className='bg-white rounded-xl border border-slate-200 shadow-sm p-6'>
+						<div className='flex items-center justify-between mb-4'>
+							<h4 className='font-bold text-slate-900 text-sm uppercase tracking-wider flex items-center gap-2'>
+								<span className='w-1 h-4 bg-indigo-500 rounded-full'></span>
+								Announcements
+							</h4>
+							{announcements.length > 0 && (
+								<span className='text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700'>
+									{announcements.length} Active
+								</span>
+							)}
+						</div>
+
+						{maintenanceLoading ? (
+							<div className='flex items-center justify-center py-8'>
+								<Loader2 className='w-6 h-6 animate-spin text-slate-300' />
+							</div>
+						) : announcements.length === 0 ? (
+							<div className='py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200'>
+								<div className='w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3'>
+									<Bell className='w-5 h-5 text-slate-400' />
+								</div>
+								<p className='text-sm text-slate-500'>No active announcements</p>
+								<p className='text-xs text-slate-400 mt-1'>
+									System is running normally
+								</p>
+							</div>
+						) : (
+							<div className='space-y-3'>
+								{announcements.slice(0, 5).map((announcement) => {
+									const isToday =
+										announcement.scheduledAt &&
+										isMaintenanceToday(announcement.scheduledAt);
+									const theCountdown =
+										announcement.type === "maintenance" &&
+											announcement.scheduledAt
+											? announcementCountdowns[announcement.id]
+											: null;
+
+									return (
+										<div
+											key={announcement.id}
+											onClick={() => setShowAnnouncementDetail(announcement)}
+											className={`p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md ${announcement.type === "warning"
+													? "bg-amber-50/50 border-amber-200 hover:border-amber-300"
+													: announcement.type === "maintenance"
+														? isToday
+															? "bg-red-50/50 border-red-200 hover:border-red-300"
+															: "bg-orange-50/50 border-orange-200 hover:border-orange-300"
+														: "bg-blue-50/50 border-blue-200 hover:border-blue-300"
+												}`}>
+											<div className='flex items-start gap-3'>
+												<div
+													className={`p-1.5 rounded-lg flex-shrink-0 ${announcement.type === "warning"
+															? "bg-amber-100 text-amber-600"
+															: announcement.type === "maintenance"
+																? isToday
+																	? "bg-red-100 text-red-600 animate-pulse"
+																	: "bg-orange-100 text-orange-600"
+																: "bg-blue-100 text-blue-600"
+														}`}>
+													{announcement.type === "maintenance" ? (
+														isToday ? (
+															<AlertTriangle className='w-4 h-4' />
+														) : (
+															<Wrench className='w-4 h-4' />
+														)
+													) : announcement.type === "warning" ? (
+														<AlertTriangle className='w-4 h-4' />
+													) : (
+														<Bell className='w-4 h-4' />
+													)}
+												</div>
+												<div className='flex-1 min-w-0'>
+													<div className='flex items-center gap-2 mb-0.5 flex-wrap'>
+														<h5
+															className={`text-sm font-bold truncate ${announcement.type === "warning"
+																	? "text-amber-900"
+																	: announcement.type === "maintenance"
+																		? "text-red-900"
+																		: "text-blue-900"
+																}`}>
+															{isToday && "⚠️ "}
+															{announcement.title}
+														</h5>
+														<span
+															className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${announcement.type === "warning"
+																	? "bg-amber-200 text-amber-800"
+																	: announcement.type === "maintenance"
+																		? isToday
+																			? "bg-red-200 text-red-800"
+																			: "bg-orange-200 text-orange-800"
+																		: "bg-blue-200 text-blue-800"
+																}`}>
+															{isToday ? "TODAY" : announcement.type}
+														</span>
+													</div>
+													<p
+														className={`text-xs line-clamp-2 ${announcement.type === "warning"
+																? "text-amber-700"
+																: announcement.type === "maintenance"
+																	? "text-red-700"
+																	: "text-blue-700"
+															}`}>
+														{announcement.message}
+													</p>
+													{theCountdown && (
+														<div className='mt-2 flex items-center gap-1.5'>
+															<Clock className='w-3 h-3 text-red-500' />
+															<span className='text-xs font-mono font-bold text-red-600'>
+																{theCountdown}
+															</span>
+														</div>
+													)}
+													{announcement.scheduledAt && !theCountdown && (
+														<div className='mt-1.5 flex items-center gap-1 text-xs text-slate-500'>
+															<Clock className='w-3 h-3' />
+															{new Date(announcement.scheduledAt).toLocaleDateString()}
+														</div>
+													)}
+												</div>
+												<ChevronRight
+													className={`w-4 h-4 flex-shrink-0 ${announcement.type === "warning"
+															? "text-amber-400"
+															: announcement.type === "maintenance"
+																? "text-red-400"
+																: "text-blue-400"
+														}`}
+												/>
+											</div>
+										</div>
+									);
+								})}
+								{announcements.length > 5 && (
+									<p className='text-xs text-center text-slate-500 pt-2'>
+										+{announcements.length - 5} more announcements
+									</p>
+								)}
 							</div>
 						)}
 					</div>

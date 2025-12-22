@@ -302,6 +302,65 @@ export class DockerService implements OnModuleInit {
         );
     }
 
+    /**
+     * Update service resource limits (CPU and Memory)
+     * @param nameOrId Service name or ID
+     * @param resources Object containing cpuLimit (nanoCPUs), memoryLimit (bytes), cpuReservation, memoryReservation
+     */
+    async updateServiceResources(
+        nameOrId: string,
+        resources: {
+            cpuLimit?: number; // in nanoCPUs (1 CPU = 1e9)
+            memoryLimit?: number; // in bytes
+            cpuReservation?: number; // in nanoCPUs
+            memoryReservation?: number; // in bytes
+        }
+    ): Promise<void> {
+        const service = this.docker.getService(nameOrId);
+        const info = await service.inspect();
+
+        const updatedSpec = { ...info.Spec };
+
+        // Ensure TaskTemplate and Resources exist
+        if (!updatedSpec.TaskTemplate) {
+            updatedSpec.TaskTemplate = {};
+        }
+        if (!updatedSpec.TaskTemplate.Resources) {
+            updatedSpec.TaskTemplate.Resources = {};
+        }
+        if (!updatedSpec.TaskTemplate.Resources.Limits) {
+            updatedSpec.TaskTemplate.Resources.Limits = {};
+        }
+        if (!updatedSpec.TaskTemplate.Resources.Reservations) {
+            updatedSpec.TaskTemplate.Resources.Reservations = {};
+        }
+
+        // Update limits
+        if (resources.cpuLimit !== undefined) {
+            updatedSpec.TaskTemplate.Resources.Limits.NanoCPUs = resources.cpuLimit;
+        }
+        if (resources.memoryLimit !== undefined) {
+            updatedSpec.TaskTemplate.Resources.Limits.MemoryBytes = resources.memoryLimit;
+        }
+
+        // Update reservations
+        if (resources.cpuReservation !== undefined) {
+            updatedSpec.TaskTemplate.Resources.Reservations.NanoCPUs = resources.cpuReservation;
+        }
+        if (resources.memoryReservation !== undefined) {
+            updatedSpec.TaskTemplate.Resources.Reservations.MemoryBytes = resources.memoryReservation;
+        }
+
+        await service.update({
+            version: parseInt(info.Version?.Index?.toString() || "0", 10),
+            ...updatedSpec,
+        });
+
+        this.logger.log(
+            `Service resources updated: ${nameOrId} - CPU: ${resources.cpuLimit ? (resources.cpuLimit / 1e9).toFixed(2) : 'unchanged'} cores, Memory: ${resources.memoryLimit ? Math.round(resources.memoryLimit / 1024 / 1024) : 'unchanged'} MB`
+        );
+    }
+
     async removeService(nameOrId: string): Promise<void> {
         const service = this.docker.getService(nameOrId);
         await service.remove();
