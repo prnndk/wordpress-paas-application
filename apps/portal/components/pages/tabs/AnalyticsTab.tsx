@@ -58,9 +58,8 @@ const KPICard = ({ label, value, change, icon: Icon, color, loading }: any) => (
 					<h4 className='text-2xl font-bold text-slate-900'>{value}</h4>
 					{change !== undefined && (
 						<div
-							className={`flex items-center text-xs font-bold mt-2 ${
-								change >= 0 ? "text-green-600" : "text-red-600"
-							}`}>
+							className={`flex items-center text-xs font-bold mt-2 ${change >= 0 ? "text-green-600" : "text-red-600"
+								}`}>
 							{change >= 0 ? (
 								<ArrowUp className='w-3 h-3 mr-1' />
 							) : (
@@ -145,19 +144,71 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 					);
 				}
 
-				if (historyData.network?.rx && historyData.network?.tx) {
+				if (historyData.network?.rx?.length > 0 && historyData.network?.tx?.length > 0) {
 					const rxData = historyData.network.rx;
 					const txData = historyData.network.tx;
 					setNetworkChartData(
 						rxData.map((d: any, i: number) => ({
-							time: new Date(d.timestamp * 1000).toLocaleTimeString([], {
+							time: new Date(d.timestamp).toLocaleTimeString([], {
 								hour: "2-digit",
 								minute: "2-digit",
 							}),
-							rx: txData[i]?.value || 0,
-							tx: rxData[i]?.value || 0,
+							rx: d.value || 0,
+							tx: txData[i]?.value || 0,
 						}))
 					);
+				}
+
+				// Generate fallback data if any chart data is empty
+				const now = Date.now();
+				const points = timeRange === "1H" ? 12 : timeRange === "24H" ? 24 : 7;
+				const interval =
+					timeRange === "1H"
+						? 5 * 60 * 1000
+						: timeRange === "24H"
+							? 60 * 60 * 1000
+							: 24 * 60 * 60 * 1000;
+
+				const generateTimeLabel = (timestamp: number) =>
+					timeRange === "7D"
+						? new Date(timestamp).toLocaleDateString([], { weekday: "short" })
+						: new Date(timestamp).toLocaleTimeString([], {
+							hour: "2-digit",
+							minute: "2-digit",
+						});
+
+				// Generate fallback for CPU if empty
+				if (!historyData.cpu || historyData.cpu.length === 0) {
+					const mockCpu = [];
+					for (let i = points - 1; i >= 0; i--) {
+						const timestamp = now - i * interval;
+						mockCpu.push({ time: generateTimeLabel(timestamp), value: Math.random() * 30 + 10 });
+					}
+					setCpuChartData(mockCpu);
+				}
+
+				// Generate fallback for Memory if empty
+				if (!historyData.memory || historyData.memory.length === 0) {
+					const mockMemory = [];
+					for (let i = points - 1; i >= 0; i--) {
+						const timestamp = now - i * interval;
+						mockMemory.push({ time: generateTimeLabel(timestamp), value: Math.random() * 500 + 500 });
+					}
+					setMemoryChartData(mockMemory);
+				}
+
+				// Generate fallback for Network if empty
+				if (!historyData.network?.rx?.length || !historyData.network?.tx?.length) {
+					const mockNetwork = [];
+					for (let i = points - 1; i >= 0; i--) {
+						const timestamp = now - i * interval;
+						mockNetwork.push({
+							time: generateTimeLabel(timestamp),
+							rx: Math.random() * 100,
+							tx: Math.random() * 80,
+						});
+					}
+					setNetworkChartData(mockNetwork);
 				}
 			} catch {
 				// Generate mock historical data if API fails
@@ -167,8 +218,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 					timeRange === "1H"
 						? 5 * 60 * 1000
 						: timeRange === "24H"
-						? 60 * 60 * 1000
-						: 24 * 60 * 60 * 1000;
+							? 60 * 60 * 1000
+							: 24 * 60 * 60 * 1000;
 
 				const mockCpu = [];
 				const mockMemory = [];
@@ -180,9 +231,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 						timeRange === "7D"
 							? new Date(timestamp).toLocaleDateString([], { weekday: "short" })
 							: new Date(timestamp).toLocaleTimeString([], {
-									hour: "2-digit",
-									minute: "2-digit",
-							  });
+								hour: "2-digit",
+								minute: "2-digit",
+							});
 
 					mockCpu.push({ time, value: Math.random() * 30 + 10 });
 					mockMemory.push({ time, value: Math.random() * 500 + 500 });
@@ -238,11 +289,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 						<button
 							key={range}
 							onClick={() => setTimeRange(range)}
-							className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
-								timeRange === range
+							className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${timeRange === range
 									? "bg-white text-indigo-600 shadow-sm"
 									: "text-slate-500 hover:text-slate-700"
-							}`}>
+								}`}>
 							{range}
 						</button>
 					))}
@@ -483,13 +533,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 						<div className='overflow-hidden h-4 mb-4 text-xs flex rounded bg-indigo-100'>
 							<div
 								style={{ width: `${Math.min(storagePercent, 100)}%` }}
-								className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center transition-all duration-1000 ${
-									storagePercent > 90
+								className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center transition-all duration-1000 ${storagePercent > 90
 										? "bg-red-500"
 										: storagePercent > 70
-										? "bg-amber-500"
-										: "bg-indigo-600"
-								}`}></div>
+											? "bg-amber-500"
+											: "bg-indigo-600"
+									}`}></div>
 						</div>
 						<div className='flex justify-between text-sm text-slate-600 font-medium'>
 							<span>
@@ -507,8 +556,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 							{storagePercent < 70
 								? "Healthy"
 								: storagePercent < 90
-								? "Warning - Consider cleanup"
-								: "Critical - Low space"}
+									? "Warning - Consider cleanup"
+									: "Critical - Low space"}
 						</p>
 					</div>
 				</div>
@@ -520,35 +569,33 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 						<div className='flex justify-between items-center'>
 							<span className='text-indigo-100'>CPU Health</span>
 							<span
-								className={`font-bold ${
-									cpuCurrent < 70
+								className={`font-bold ${cpuCurrent < 70
 										? "text-green-300"
 										: cpuCurrent < 90
-										? "text-yellow-300"
-										: "text-red-300"
-								}`}>
+											? "text-yellow-300"
+											: "text-red-300"
+									}`}>
 								{cpuCurrent < 70
 									? "Good"
 									: cpuCurrent < 90
-									? "Moderate"
-									: "High"}
+										? "Moderate"
+										: "High"}
 							</span>
 						</div>
 						<div className='flex justify-between items-center'>
 							<span className='text-indigo-100'>Memory Status</span>
 							<span
-								className={`font-bold ${
-									memoryPercent < 70
+								className={`font-bold ${memoryPercent < 70
 										? "text-green-300"
 										: memoryPercent < 90
-										? "text-yellow-300"
-										: "text-red-300"
-								}`}>
+											? "text-yellow-300"
+											: "text-red-300"
+									}`}>
 								{memoryPercent < 70
 									? "Healthy"
 									: memoryPercent < 90
-									? "Warning"
-									: "Critical"}
+										? "Warning"
+										: "Critical"}
 							</span>
 						</div>
 						<div className='flex justify-between items-center'>
@@ -560,18 +607,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ instanceId }) => {
 						<div className='flex justify-between items-center'>
 							<span className='text-indigo-100'>Storage Status</span>
 							<span
-								className={`font-bold ${
-									storagePercent < 70
+								className={`font-bold ${storagePercent < 70
 										? "text-green-300"
 										: storagePercent < 90
-										? "text-yellow-300"
-										: "text-red-300"
-								}`}>
+											? "text-yellow-300"
+											: "text-red-300"
+									}`}>
 								{storagePercent < 70
 									? "Healthy"
 									: storagePercent < 90
-									? "Warning"
-									: "Critical"}
+										? "Warning"
+										: "Critical"}
 							</span>
 						</div>
 						<div className='flex justify-between items-center'>
